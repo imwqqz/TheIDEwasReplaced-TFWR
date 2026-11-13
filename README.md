@@ -48,10 +48,11 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
 - **Editor** — our own editor with syntax colours; pick scripts in the Project explorer.
   Run/Stop and Save act on the selected script. The game's code windows are never shown while
   the IDE is open; they remain only as run/save backends.
-- **Project explorer** — collapsible, on the right by default (`Explorer side` config). Click a
-  file to open it in the editor area; footer buttons: New folder, Refresh, Rename, Move, Delete.
-- **Terminal** — bottom panel with `Terminal · Local` header, live output and Clear; toggle with
-  the top-bar **Terminal** button or the panel chevron.
+- **Project explorer** — collapsible, on the right by default (`Explorer side` config). Header
+  icons: `+` new file, `⊞` new folder, `⇕` collapse/expand all, `×` delete, `⋮` menu. Right-click
+  any row for New file, New folder, Rename, Move, Delete and Refresh.
+- **Terminal** — bottom panel with a `Terminal` header, live output and Clear; toggle with the
+  top-bar **Terminal** button or the panel chevron. Right-click it for Copy output and Clear.
 - **Run / Stop** — runs or stops the selected script (same as the window's run button).
 - **Save** — full game save (progress + scripts).
 - The terminal shows the game's real `print` / `quick_print` / error output, including `In:` traces.
@@ -195,11 +196,12 @@ to the save root for the vanilla layout.
   only for parsing, running and saving. The game's editor windows are never displayed while the
   IDE is open.
 - All IDE surfaces are opaque; the only translucent part is the dimmed backdrop of a rename/delete
-  dialog.
+  dialog and of the context menu.
 - The IDE hides while the Escape menu is open (and logs it) and comes back when the menu closes.
+  An open context menu closes with it.
 - Editor scroll is mouse-wheel only; there is no scrollbar or line-number gutter (the status bar
   shows `Ln/Col`).
 - The IDE chrome uses Unity's built-in UI font; the editor uses the game's code font (FiraCode)
-  when it can be read from the CodeWindow prefab.
+  when it can be read from the CodeWindow prefab. Icon glyphs come from the same built-in font.
 - Saving while the IDE is open stores the hidden windows as usual; no window positions are
   changed by the IDE.
