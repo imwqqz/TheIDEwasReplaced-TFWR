@@ -40,8 +40,8 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 | 4 | Run `usefolder.py` | Console shows `helper says 5`; `output.txt` has the same line. |
 | 5 | Save (top bar or Ctrl+S) | `test\hay.py` and `test\helper.py` still exist in `test\`; root files unchanged. |
 | 6 | Edit `test\helper.py` externally, wait ~1 s | Editor content updates when the editor is not focused (file watcher). |
-| 7 | Select `hay` → Rename → `hay2` | File `test\hay2.py` on disk; editor title/selection follows; import name changes accordingly. |
-| 8 | Select `hay2` → Move → `other` | File at `test\other\hay2.py`; editor unchanged. |
+| 7 | Select `hay` - Rename - `hay2` | File `test\hay2.py` on disk; editor title/selection follows; import name changes accordingly. |
+| 8 | Select `hay2` - Move - `other` | File at `test\other\hay2.py`; editor unchanged. |
 | 9 | Close the `hay2` window, save | `test\other\hay2.py` still on disk (folder files persist). |
 | 10 | Create a root file with an existing leaf name (e.g. copy `test\helper.py` to root) | Next load: conflict popup, red status line, folder copy skipped; log lists it. |
 | 11 | Drag the IDE by its title bar, resize from the bottom-right corner | Window and editor area move/resize. Position/size survive a F10 close/reopen and a relaunch. |
@@ -55,7 +55,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 | 19 | Click in the code and type; roll the wheel over the editor | Caret appears, typing works, code scrolls, and the map does not zoom. |
 | 20 | Drag a file row onto a folder, onto the editor, then onto an empty tree spot | File moves on disk, editor opens it, file returns to root. Escape cancels. |
 | 21 | Add `docs/` to `.farmignore` in the editor | Tree drops the folder after the save; the file is written on disk. |
-| 22 | Open `.farmignore`, then click the `×` icon | The file is deleted after the confirm dialog. |
+| 22 | Open `.farmignore`, then click the delete icon | The file is deleted after the confirm dialog. |
 | 23 | While typing, press F10 (close), then type in the game | The caret leaves the editor; camera keys work again. |
 | 24 | Scroll with the wheel outside the IDE window | The map zooms; scrolling over the IDE never zooms it. |
 | 25 | Drag inside the Project list | The list does not scroll; the wheel does. |
@@ -69,7 +69,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 [Info   :TFWR Folders] [Folders] loaded save 'foldertest', folder scripts: 2, conflicts: 0
 ```
 
-Warnings about `skipped: a root file with the same name is loaded first` mean a name conflict —
+Warnings about `skipped: a root file with the same name is loaded first` mean a name conflict  - 
 expected in step 10, not otherwise.
 
 ## If something fails

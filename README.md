@@ -6,10 +6,10 @@ BepInEx mod for The Farmer Was Replaced: real subfolders for your scripts, plus 
 ## What it does
 
 - Loads `Saves/<save>/**/*.py` (any depth, hidden folders skipped) into code windows at load.
-- Saves every open window back to its own folder — root scripts stay root, folder scripts stay put.
+- Saves every open window back to its own folder - root scripts stay root, folder scripts stay put.
 - Adds a floating IDE window (toggle **F10**) in a VS Code-like layout: our own syntax-coloured
   editor in the middle, a Project explorer you can put left or right, a collapsible Terminal and
-  a status bar. While it is open it is the only visible editor — the game's windows are hidden
+  a status bar. While it is open it is the only visible editor - the game's windows are hidden
   and restored exactly when you close it. The chrome is opaque.
 - Watches subfolders too, so external edits hot-reload into the matching window.
 
@@ -34,29 +34,29 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
 
 ## Quick start
 
-1. Load a save and press **F10** — the IDE opens.
-2. **New folder** → `utils`.
+1. Load a save and press **F10** - the IDE opens.
+2. **New folder** - `utils`.
 3. Select a root script in the tree, click **Move**, enter `utils`, OK.
 4. Click **Save**. The `.py` file is now on disk in `utils\`; the window name (and `import`) did
    not change.
 
 ## Usage
 
-- **F10** — open/close the IDE.
+- **F10** - open/close the IDE.
 - **Drag the title bar** to move the window; **drag the bottom-right corner** to resize.
   Position and size are saved in `tfwr.folders.cfg` and restored next launch.
-- **Editor** — our own editor with syntax colours; click to place the caret and type (characters,
+- **Editor** - our own editor with syntax colours; click to place the caret and type (characters,
   Backspace/Delete, arrows, Home/End, Enter with indent, Tab, Ctrl+V). There is no text selection
   or IME input. The wheel scrolls the code; the map zooms only when the pointer is outside the
   IDE window.
-- **Toolbar icons** (title bar, right): run/stop toggle, save, terminal toggle, new file (``+``),
-  new folder (``⊞``), collapse/expand all (``⇕``), delete (``×``), menu (``⋮``), hide (``_``).
-- **Project explorer** — collapsible, on the right by default (`Explorer side` config). Drag a
+- **Toolbar icons** (title bar, right): run/stop toggle, save, terminal toggle, new file, new
+  folder, collapse/expand all, delete, menu, hide.
+- **Project explorer** - collapsible, on the left by default (`Explorer side` config). Drag a
   file row onto a folder to move it, onto the editor to open it, or onto an empty spot of the
   tree to move it back to the root. Right-click any row for the same actions.
 - **`.farmignore`** appears in the explorer when present (or create it from the menu). It opens
   in the editor as plain text and saves back to the file; the tree re-reads the rules.
-- **Terminal** — bottom panel with a `Terminal` header, live output and Clear; toggle from the
+- **Terminal** - bottom panel with a `Terminal` header, live output and Clear; toggle from the
   toolbar or the panel chevron. Right-click it for Copy output and Clear.
 - The terminal shows the game's real `print` / `quick_print` / error output, including `In:` traces.
 - The IDE hides itself while the game's Escape menu is open and returns when you close the menu.
@@ -67,7 +67,7 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
   so `import hay`, `from hay import x` and `hay.func()` keep working unchanged.
 - **Names must be unique across the whole save** (root + folders, case-insensitive). That is what
   makes `import` unambiguous.
-- Root scripts behave exactly as vanilla — including the game's rule that closing a root window
+- Root scripts behave exactly as vanilla - including the game's rule that closing a root window
   and saving deletes that file.
 - Folder scripts are **not** deleted when you close their window; the file stays on disk and
   reopens next session. Delete them with the panel.
@@ -99,7 +99,8 @@ Only plain names are importable. Autocomplete lists window names, i.e. the file 
 Toggle key = F10
 Tree width = 210
 Console height = 170
-Explorer side = Right
+Explorer side = Left
+Debug logs = false
 
 [Window]
 X = 0
@@ -121,11 +122,11 @@ img/
 farm/tmp_*
 ```
 
-- `docs/` — the folder and everything below it.
-- `*.md` — by file name, at any depth.
-- `farm/**` — anything under `farm`.
-- Hidden folders (`.venv`, `.idea`, …) are always skipped; no pattern needed.
-- Ignored files are **not deleted** — they are only hidden from the IDE and not loaded as scripts.
+- `docs/` - the folder and everything below it.
+- `*.md` - by file name, at any depth.
+- `farm/**` - anything under `farm`.
+- Hidden folders (`.venv`, `.idea`,  - ) are always skipped; no pattern needed.
+- Ignored files are **not deleted** - they are only hidden from the IDE and not loaded as scripts.
 - Root `.py` files are still loaded by the game; the tree hides them if a pattern matches.
 
 ## Backup
@@ -190,7 +191,7 @@ Tested against: game **0.1** (`Application.version`), Unity **6000.0.43f1**, Ste
 ## Uninstall
 
 Delete `BepInEx\plugins\TFWRFolders\TFWRFolders.dll` (and optionally the config file).
-Folder files simply become invisible to the game again — they are **not** deleted. Move them back
+Folder files simply become invisible to the game again - they are **not** deleted. Move them back
 to the save root for the vanilla layout.
 
 ## Notes

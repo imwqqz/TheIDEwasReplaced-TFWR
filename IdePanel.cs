@@ -10,7 +10,7 @@ using UnityEngine.UI;
 namespace TFWRFolders
 {
     // Comment: our editor is the UI; hidden game windows remain the run/save backend.
-    internal sealed class IdePanel : MonoBehaviour
+    internal sealed partial class IdePanel : MonoBehaviour
     {
         internal static bool IsOpen
         {
@@ -96,6 +96,7 @@ namespace TFWRFolders
         private string pressLeaf;
         private string pressFolder;
         private Vector2 pressPos;
+        private PointerEventData pressEvent;
         private bool dragActive;
         private string dragLeaf;
         private string dragFolder;
@@ -154,7 +155,7 @@ namespace TFWRFolders
             public void OnPointerDown(PointerEventData eventData)
             {
                 if (eventData.button == PointerEventData.InputButton.Left && owner != null)
-                    owner.BeginPress(leaf, folder, eventData.position);
+                    owner.BeginPress(leaf, folder, eventData.position, eventData);
             }
         }
 
@@ -255,8 +256,12 @@ namespace TFWRFolders
                         if (canvas.enabled) canvas.enabled = false;
                         CloseModal();
                         CloseMenu();
+                        if (editor != null)
+                        {
+                            editor.Flush();
+                            editor.Blur();
+                        }
                         CancelPress();
-                        if (editor != null) editor.Blur();
                         ReleaseInputBoss();
                         Plugin.Log?.LogInfo("[Folders] IDE hidden for the in-game menu");
                     }
@@ -464,6 +469,11 @@ namespace TFWRFolders
             if (editor != null || editorRect == null || MainSim.Inst == null) return;
             editor = new CodeEditor(this, editorRect);
             editor.SetColors(Shade(bg, 0.70f), fg, accent);
+        }
+
+        private static void DebugLog(string message)
+        {
+            if (Plugin.DebugLogs != null && Plugin.DebugLogs.Value) Plugin.Log?.LogInfo(message);
         }
 
         internal void ShowParseError(string message)
@@ -1026,6 +1036,7 @@ namespace TFWRFolders
                 AddRow(label, null, fo, depth, true, selectedFolder == fo && string.IsNullOrEmpty(selectedLeaf) && !ignoreSelected,
                     () =>
                     {
+                        if (editor != null) editor.CancelEditing();
                         ignoreSelected = false;
                         if (collapsed.Contains(fo)) collapsed.Remove(fo); else collapsed.Add(fo);
                         selectedLeaf = null;
@@ -1157,164 +1168,6 @@ namespace TFWRFolders
         }
 
         // ---------------- drag and drop ----------------
-
-        private void BeginPress(string leaf, string folder, Vector2 screen)
-        {
-            if (string.IsNullOrEmpty(leaf) || suppressed) return;
-            pressActive = true;
-            pressLeaf = leaf;
-            pressFolder = folder ?? "";
-            pressPos = screen;
-            if (contextMenu != null) CloseMenu();
-            Plugin.Log?.LogInfo("[Folders] row press " + leaf);
-        }
-
-        private void HandlePointer()
-        {
-            Vector2 mouse = Input.mousePosition;
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                CancelPress();
-                return;
-            }
-            if (Input.GetMouseButtonUp(0))
-            {
-                EndPress(mouse);
-                return;
-            }
-            if (!dragActive && (mouse - pressPos).sqrMagnitude > 100f) StartDrag(mouse);
-            if (dragActive) UpdateRowDrag(mouse);
-        }
-
-        private void StartDrag(Vector2 screen)
-        {
-            if (dragActive || string.IsNullOrEmpty(pressLeaf)) return;
-            dragActive = true;
-            dragLeaf = pressLeaf;
-            dragFolder = pressFolder;
-            CloseMenu();
-
-            dragGhost = new GameObject("DragGhost", typeof(RectTransform), typeof(Image));
-            dragGhost.transform.SetParent(canvas.transform, false);
-            var rt = (RectTransform)dragGhost.transform;
-            SetRect(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(150f, 20f), Vector2.zero);
-            dragGhost.GetComponent<Image>().color = statusCol;
-            dragGhostText = MakeText(dragGhost.transform, dragLeaf, 11, fg, TextAnchor.MiddleCenter, false);
-            var tr = (RectTransform)dragGhostText.transform;
-            tr.anchorMin = Vector2.zero;
-            tr.anchorMax = Vector2.one;
-            tr.offsetMin = new Vector2(4f, 0f);
-            tr.offsetMax = new Vector2(-4f, 0f);
-            Plugin.Log?.LogInfo("[Folders] drag start " + dragLeaf);
-            UpdateRowDrag(screen);
-        }
-
-        private void EndPress(Vector2 screen)
-        {
-            pressActive = false;
-            if (dragActive)
-            {
-                EndRowDrag(screen);
-            }
-            else
-            {
-                CleanupDrag();
-            }
-        }
-
-        private void UpdateRowDrag(Vector2 screen)
-        {
-            if (!dragActive) return;
-            PositionGhost(screen);
-
-            RowInfo target = FindRowUnder(screen);
-            if (target != null && !target.isFolder) target = null;
-
-            if (hoverRow != null && hoverRow != target && hoverRow.image != null)
-                hoverRow.image.color = hoverRow.baseColor;
-            hoverRow = target;
-            if (hoverRow != null && hoverRow.image != null)
-                hoverRow.image.color = Color.Lerp(hoverRow.baseColor, accent, 0.45f);
-        }
-
-        private void EndRowDrag(Vector2 screen)
-        {
-            if (!dragActive) return;
-            pressActive = false;
-            string leaf = dragLeaf;
-            string from = dragFolder;
-
-            RowInfo target = FindRowUnder(screen);
-            bool overEditor = editorRect != null && RectTransformUtility.RectangleContainsScreenPoint(editorRect, screen, null);
-            bool overTree = treePanel != null && RectTransformUtility.RectangleContainsScreenPoint(treePanel, screen, null);
-
-            Plugin.Log?.LogInfo("[Folders] drag end " + leaf + " -> " + (overEditor ? "editor" : (target != null && target.isFolder ? "folder " + target.folder : (overTree && target == null ? "root" : "none"))));
-
-            CleanupDrag();
-
-            if (overEditor)
-            {
-                ignoreSelected = false;
-                selectedLeaf = leaf;
-                selectedFolder = from;
-                EnsureEditor(leaf, from);
-                status = "opened " + leaf;
-                Refresh();
-                return;
-            }
-
-            if (target != null && target.isFolder)
-            {
-                MoveFile(leaf, from, target.folder);
-            }
-            else if (overTree && target == null)
-            {
-                MoveFile(leaf, from, "");
-            }
-            Refresh();
-        }
-
-        private void CancelPress()
-        {
-            pressActive = false;
-            if (dragActive)
-            {
-                CleanupDrag();
-                Refresh();
-            }
-        }
-
-        private void CleanupDrag()
-        {
-            dragActive = false;
-            if (dragGhost != null)
-            {
-                DestroyImmediate(dragGhost);
-                dragGhost = null;
-                dragGhostText = null;
-            }
-            if (hoverRow != null && hoverRow.image != null) hoverRow.image.color = hoverRow.baseColor;
-            hoverRow = null;
-        }
-
-        private void PositionGhost(Vector2 screen)
-        {
-            if (dragGhost == null) return;
-            var canvasRt = (RectTransform)canvas.transform;
-            Vector2 local;
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRt, screen, null, out local)) return;
-            ((RectTransform)dragGhost.transform).anchoredPosition = local + new Vector2(12f, -12f);
-        }
-
-        private RowInfo FindRowUnder(Vector2 screen)
-        {
-            foreach (var row in rowInfos)
-            {
-                if (row == null || row.rect == null) continue;
-                if (RectTransformUtility.RectangleContainsScreenPoint(row.rect, screen, null)) return row;
-            }
-            return null;
-        }
 
         private bool MoveFile(string leaf, string from, string to)
         {

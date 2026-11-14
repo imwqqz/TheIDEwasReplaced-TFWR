@@ -23,6 +23,7 @@ namespace TFWRFolders
         internal static ConfigEntry<float> TreeWidth;
         internal static ConfigEntry<float> ConsoleHeight;
         internal static ConfigEntry<string> ExplorerSide;
+        internal static ConfigEntry<bool> DebugLogs;
         internal static ConfigEntry<float> WindowX;
         internal static ConfigEntry<float> WindowY;
         internal static ConfigEntry<float> WindowWidth;
@@ -36,7 +37,8 @@ namespace TFWRFolders
             ToggleKey = Config.Bind("General", "Toggle key", new KeyboardShortcut(KeyCode.F10), "Shows or hides the IDE.");
             TreeWidth = Config.Bind("General", "Tree width", 210f, "Width of the file tree column in UI pixels.");
             ConsoleHeight = Config.Bind("General", "Console height", 170f, "Height of the terminal panel in UI pixels.");
-            ExplorerSide = Config.Bind("General", "Explorer side", "Right", "Where the Project explorer sits: Right or Left.");
+            ExplorerSide = Config.Bind("General", "Explorer side", "Left", "Where the Project explorer sits: Left or Right.");
+            DebugLogs = Config.Bind("General", "Debug logs", false, "Log editor clicks and drag steps.");
             WindowX = Config.Bind("Window", "X", 0f, "Saved window X position (canvas units, 0 = centered).");
             WindowY = Config.Bind("Window", "Y", 0f, "Saved window Y position (canvas units, 0 = centered).");
             WindowWidth = Config.Bind("Window", "Width", 900f, "Saved window width in UI pixels.");

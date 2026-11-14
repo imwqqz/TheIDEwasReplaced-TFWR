@@ -6,19 +6,19 @@ Everything lives in the BepInEx plugin; no game files are modified.
 ## Data flow
 
 ```
-Saver.Load ──► postfix: scan Saves/<save>/**, open folder windows, build leaf→folder map
-     │
-     ▼
+Saver.Load - postfix: scan Saves/<save>/**, open folder windows, build leaf - folder map
+      - 
+      - 
 Workspace.codeWindows  (key = file name WITHOUT folder, e.g. "hay")
-     │
-     ├── edit in game ──► CaptureCodeFiles ──► WriteCodeFiles prefix: write each window to
-     │                                          <save>/<mapped folder>/<name>.py, prune map,
-     │                                          then vanilla root cleanup
-     │
-     ├── edit on disk ──► FileSystemWatcher (IncludeSubdirectories) ──► OnFileChanged
-     │                    (name → leaf via GetFileNameWithoutExtension) ──► ApplyCodeChanges
-     │
-     └── import hay ────► ImportNode.Execute: codeWindows.TryGetValue("hay")
+      - 
+     - edit in game - CaptureCodeFiles - WriteCodeFiles prefix: write each window to
+     -                                          <save>/<mapped folder>/<name>.py, prune map,
+     -                                          then vanilla root cleanup
+      - 
+     - edit on disk - FileSystemWatcher (IncludeSubdirectories) - OnFileChanged
+     -                    (name - leaf via GetFileNameWithoutExtension) - ApplyCodeChanges
+      - 
+     - import hay - ImportNode.Execute: codeWindows.TryGetValue("hay")
 ```
 
 The game itself only ever enumerates the save's **top level** (`Saver.Load`,
@@ -29,7 +29,7 @@ The game itself only ever enumerates the save's **top level** (`Saver.Load`,
 | Method | Type | What it does |
 |---|---|---|
 | `Saver.Load(MainSim)` | postfix | Clears/rebuilds the map, opens one window per subfolder `.py` (leaf-name key), restores position/size/scroll/minimised/dock from `save.json`, warns on name conflicts. |
-| `Saver.WriteCodeFiles(code, builtins, savePath)` | prefix | If the map is empty → vanilla runs. Else writes each window to its mapped path with the game's atomic writer, prunes stale map entries, keeps `__builtins__.py` and root-cleanup semantics, skips the original. Any exception → log + run the vanilla writer. |
+| `Saver.WriteCodeFiles(code, builtins, savePath)` | prefix | If the map is empty - vanilla runs. Else writes each window to its mapped path with the game's atomic writer, prunes stale map entries, keeps `__builtins__.py` and root-cleanup semantics, skips the original. Any exception - log + run the vanilla writer. |
 | `Saver.StartFileWatcher()` | postfix | Sets `IncludeSubdirectories = true` on the private watcher. |
 | `Workspace.RenameWindow(window, name)` | postfix (with `__state`) | Carries the folder mapping across an in-game rename. |
 | `Workspace.Scroll(float)` | prefix | Returns false while the mouse is over IDE chrome, so the game camera does not zoom under the UI. |
@@ -51,18 +51,18 @@ All patch bodies are wrapped in try/catch with `ManualLogSource` logging.
 
 - `Reset(saveDir)` at the start of every `Saver.Load` (save-slot switches cannot leak entries).
 - `SetFolder` from load scan and from panel create/move; `Rename` on window rename.
-- `PruneTo(code.Keys)` inside the write prefix — entries for windows that are not being saved are
+- `PruneTo(code.Keys)` inside the write prefix - entries for windows that are not being saved are
   dropped, so a later root file with the same name can never be written into an old folder.
-- `PathFor(leaf, saveDir)` → root path or `<save>/<folder>/<name>.py`.
+- `PathFor(leaf, saveDir)` - root path or `<save>/<folder>/<name>.py`.
 
-`Scan`/`ListFolders` walk directories with a stack and prune hidden (`.venv`, `.git`, …) and
+`Scan`/`ListFolders` walk directories with a stack and prune hidden (`.venv`, `.git`,  - ) and
 invalid folders **before** descending, so a Python venv inside a save costs nothing.
 
 ## Save/load concurrency
 
-The game serialises writes through a `Task` (`Saver.QueueSnapshot` → `Task.Run`). The map is
+The game serialises writes through a `Task` (`Saver.QueueSnapshot` - `Task.Run`). The map is
 therefore locked on every access; the panel only mutates it on the main thread. Panel file
-operations are ordered: wait until `!Saver.IsSaving` → close the window → drop the map entry →
+operations are ordered: wait until `!Saver.IsSaving` - close the window - drop the map entry  - 
 file operation.
 
 ## Editor
@@ -93,8 +93,11 @@ file operation.
   covered by the `TryMoveFile` unit test. The tree refresh is deferred while dragging so rows do
   not disappear under the cursor.
 - **Typing**: keys are read directly from `Input.inputString`, with keycodes for arrows, Delete,
-  Home/End and Ctrl+V; a custom caret is drawn from `TMP_Text` line info. The game's `InputBoss`
-  is disabled while the editor is active. No EventSystem keyboard path is used.
+  Home/End and Ctrl+V; a custom caret is drawn from `TMP_Text` line info and kept in view. The
+  game's `InputBoss` is disabled while the editor is active. No EventSystem keyboard path is used.
+- **Editor sync**: while typing, an external watcher change is ignored with a warning instead of
+  being overwritten; idle external changes are applied. `.farmignore` is reloaded on mtime change
+  when it has no pending edit.
 - **Scroll isolation**: `Workspace.Scroll` returns false only while the pointer is inside the IDE
   window, so the map still zooms outside it. The editor scrolls with the wheel; the Project list
   ignores drag-scrolling and uses the wheel only.
@@ -142,7 +145,7 @@ hard failure.
 |---|---|
 | Patch throws | Logged; the original game method runs where applicable (save falls back to vanilla). |
 | Name conflict | Root wins, folder copy skipped; popup + panel status + log. |
-| Folder write fails | Error logged, vanilla writer runs (a folder copy may also appear at the root — visible, not silent). |
+| Folder write fails | Error logged, vanilla writer runs (a folder copy may also appear at the root - visible, not silent). |
 | Window placement fails | Warning logged, window focused in place. |
 | Game update changes a patched method | `Harmony.PatchAll` throws at startup; the mod logs and stays inactive for that method; classic save behaviour remains. |
 | Uninstall | Folder files remain on disk, invisible to the game; root files unaffected. |

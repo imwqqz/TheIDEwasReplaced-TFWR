@@ -36,6 +36,9 @@ namespace TFWRFolders
         private int caret;
         private Color caretColor = Color.white;
         private float nextKeyLog;
+        private float nextConflictLog;
+        private DateTime rawWriteTime;
+        private string lastPushed = "";
 
         internal int Caret { get { return caret; } }
         internal string Text { get { return input != null ? (input.text ?? "") : ""; } }
@@ -206,6 +209,7 @@ namespace TFWRFolders
             owner.ShowParseError("");
             editing = false;
             caret = 0;
+            rawWriteTime = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
             string text = "";
             try { if (File.Exists(path)) text = File.ReadAllText(path); } catch { }
             Apply(text);
@@ -223,6 +227,11 @@ namespace TFWRFolders
             owner.ShowParseError("");
         }
 
+        private void DebugLog(string message)
+        {
+            if (Plugin.DebugLogs != null && Plugin.DebugLogs.Value) Plugin.Log?.LogInfo(message);
+        }
+
         internal void Focus()
         {
             if (input == null) return;
@@ -230,7 +239,7 @@ namespace TFWRFolders
             caret = TextEdit.Clamp(caret, Text);
             if (caret == 0 && Text.Length > 0) caret = Text.Length;
             DrawCaret();
-            Plugin.Log?.LogInfo("[Folders] editor click caret=" + caret);
+            DebugLog("[Folders] editor click caret=" + caret);
         }
 
         internal void CancelEditing()
@@ -255,7 +264,7 @@ namespace TFWRFolders
             if (index < 0) caret = text.Length;
             else caret = TextEdit.Clamp(inputText.textInfo.characterInfo[index].index, text);
             DrawCaret();
-            Plugin.Log?.LogInfo("[Folders] editor click caret=" + caret);
+            DebugLog("[Folders] editor click caret=" + caret);
         }
 
         internal void Flush()
@@ -273,6 +282,7 @@ namespace TFWRFolders
         private void Apply(string text)
         {
             input.text = text ?? "";
+            lastPushed = input.text ?? "";
             Colorize(text ?? "");
             DrawCaret();
         }
@@ -332,6 +342,7 @@ namespace TFWRFolders
             {
                 string text = input.text ?? "";
                 if (bound.CodeInput.text != text) bound.CodeInput.text = text;
+                lastPushed = text;
                 Node node = bound.Parse();
                 if (node == null)
                 {
@@ -361,6 +372,8 @@ namespace TFWRFolders
                 if (File.Exists(rawPath)) File.Replace(temp, rawPath, null);
                 else File.Move(temp, rawPath);
                 temp = null;
+                lastPushed = input.text ?? "";
+                rawWriteTime = File.GetLastWriteTimeUtc(rawPath);
                 owner.RawSaved(rawPath);
             }
             catch (Exception e)
@@ -396,7 +409,39 @@ namespace TFWRFolders
             {
                 nextPoll = Time.unscaledTime + 0.4f;
                 string windowText = bound.CodeInput.text ?? "";
-                if (!editing && windowText != (input.text ?? "")) Apply(windowText);
+                if (windowText != (input.text ?? ""))
+                {
+                    if (!editing) Apply(windowText);
+                    else if (pushAt < 0f && (input.text ?? "") == lastPushed) Apply(windowText);
+                    else if (Time.unscaledTime >= nextConflictLog)
+                    {
+                        nextConflictLog = Time.unscaledTime + 3f;
+                        Plugin.Log?.LogWarning("[Folders] external edit ignored while you are typing");
+                    }
+                }
+            }
+
+            if (rawMode && !string.IsNullOrEmpty(rawPath) && Time.unscaledTime >= nextPoll)
+            {
+                nextPoll = Time.unscaledTime + 0.4f;
+                try
+                {
+                    DateTime stamp = File.Exists(rawPath) ? File.GetLastWriteTimeUtc(rawPath) : DateTime.MinValue;
+                    if (stamp != rawWriteTime)
+                    {
+                        if (pushAt < 0f && (input.text ?? "") == lastPushed)
+                        {
+                            rawWriteTime = stamp;
+                            Apply(File.Exists(rawPath) ? File.ReadAllText(rawPath) : "");
+                        }
+                        else if (Time.unscaledTime >= nextConflictLog)
+                        {
+                            nextConflictLog = Time.unscaledTime + 3f;
+                            Plugin.Log?.LogWarning("[Folders] external .farmignore edit ignored while you are typing");
+                        }
+                    }
+                }
+                catch { }
             }
 
             if (inputText != null && inputText.color.a != 0f)
@@ -405,7 +450,33 @@ namespace TFWRFolders
             SyncOverlay();
             UpdateHeight();
             DrawCaret();
+            EnsureCaretVisible();
             HandleWheel();
+        }
+
+        private void EnsureCaretVisible()
+        {
+            if (!editing || caretRect == null || viewport == null) return;
+            try
+            {
+                Vector3 world = caretRect.TransformPoint(new Vector3(0f, caretRect.sizeDelta.y, 0f));
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(null, world);
+                Vector2 local;
+                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(viewport, screen, null, out local)) return;
+                Rect vp = viewport.rect;
+                float margin = caretRect.sizeDelta.y + 8f;
+                if (local.y < vp.yMin + margin)
+                {
+                    scroll -= (vp.yMin + margin - local.y);
+                    ClampScroll();
+                }
+                else if (local.y > vp.yMax - 8f)
+                {
+                    scroll += (local.y - (vp.yMax - 8f));
+                    ClampScroll();
+                }
+            }
+            catch { }
         }
 
         private void HandleKeys()
