@@ -61,6 +61,9 @@ namespace TFWRFolders
         private Text statusLeft;
         private Text statusRight;
         private Text parseErrorText;
+        private Text problemsLabel;
+        private string treeSignature = "";
+        private bool problemsVisible;
         private RectTransform hSep;
         private Image hSepImg;
         private Image gripImg;
@@ -88,6 +91,8 @@ namespace TFWRFolders
         private string lastConsole;
         private string outputCache = "";
         private DateTime outputStamp = DateTime.MinValue;
+        private string outputStampPath = "";
+        private string errorBaselineText = "";
         private bool consoleVisible = true;
         private bool explorerCollapsed;
         private bool rectLoaded;
@@ -111,6 +116,10 @@ namespace TFWRFolders
 
         private static readonly FieldInfo LoggerField =
             typeof(MainSim).GetField("logger", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo ErrorStringField =
+            typeof(CodeWindow).GetField("errorString", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo ErrorIndexField =
+            typeof(CodeWindow).GetField("errorStartIndex", BindingFlags.NonPublic | BindingFlags.Instance);
 
         private static readonly Color FallbackBg = new Color(0.11f, 0.12f, 0.14f, 1f);
         private static readonly Color FallbackFg = new Color(0.87f, 0.88f, 0.90f, 1f);
@@ -203,6 +212,13 @@ namespace TFWRFolders
 
         internal static void MarkDirty() { dirty = true; }
         internal static void ShowWithConflicts() { forceOpen = true; }
+
+        // Comment: called before a game save so pending keystrokes reach the hidden window.
+        internal static void FlushEditor()
+        {
+            if (instance == null) return;
+            try { if (instance.editor != null) instance.editor.Flush(); } catch { }
+        }
 
         internal static void OnSaveLoaded()
         {
@@ -589,7 +605,7 @@ namespace TFWRFolders
             toolStripBg.color = FallbackBg;
             var stripLayout = toolStrip.gameObject.AddComponent<VerticalLayoutGroup>();
             stripLayout.spacing = 2f;
-            stripLayout.padding = new RectOffset(2, 2, 6, 2);
+            stripLayout.padding = new RectOffset(2, 2, 2, 2);
             stripLayout.childControlWidth = true;
             stripLayout.childControlHeight = true;
             stripLayout.childForceExpandWidth = true;
@@ -677,6 +693,11 @@ namespace TFWRFolders
             var consoleTitle = MakeText(consolePanel, "Terminal", 11, FallbackMuted, TextAnchor.MiddleLeft, false);
             SetRect((RectTransform)consoleTitle.transform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(120f, 18f), new Vector2(8f, -2f));
 
+            var problemsBtn = MakeButton(consolePanel, "Problems", ToggleProblems, 10);
+            SetRect((RectTransform)problemsBtn.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(78f, 18f), new Vector2(-84f, -2f));
+            themedButtons.Add(problemsBtn);
+            problemsLabel = problemsBtn.GetComponentInChildren<Text>();
+
             var clearBtn = MakeButton(consolePanel, "Clear", ClearConsole, 10);
             SetRect((RectTransform)clearBtn.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(56f, 18f), new Vector2(-24f, -2f));
             themedButtons.Add(clearBtn);
@@ -685,6 +706,7 @@ namespace TFWRFolders
             themedButtons.Add(terminalCollapseBtn);
 
             consoleScrollRect = MakeRect(consolePanel, "Scroll");
+            SetRect(consoleScrollRect, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             consoleScroll = consoleScrollRect.gameObject.AddComponent<ScrollRect>();
             consoleScroll.horizontal = false;
             consoleScroll.vertical = true;
@@ -736,6 +758,9 @@ namespace TFWRFolders
             var gripDrag = grip.AddComponent<DragHandle>();
             gripDrag.owner = this;
             gripDrag.resize = true;
+
+            // Comment: the strip lives inside the Project panel, so it must draw above it.
+            toolStrip.SetAsLastSibling();
         }
 
         private static RectTransform MakeRect(Transform parent, string name)
@@ -880,7 +905,7 @@ namespace TFWRFolders
             collapseText.text = explorerCollapsed ? ">" : "<";
 
             treeScrollRect.offsetMin = new Vector2(4f, 4f);
-            treeScrollRect.offsetMax = new Vector2(-4f, -22f);
+            treeScrollRect.offsetMax = new Vector2(-4f - stripW, -22f);
 
             consoleScrollRect.offsetMin = new Vector2(4f, 4f);
             consoleScrollRect.offsetMax = new Vector2(-4f, -22f);
@@ -926,7 +951,7 @@ namespace TFWRFolders
 
             titleBarBg.color = titleCol;
             windowBg.color = bg;
-            toolStripBg.color = titleCol;
+            toolStripBg.color = treeCol;
             treeBg.color = treeCol;
             consoleBg.color = consoleCol;
             statusBg.color = statusCol;
@@ -967,7 +992,6 @@ namespace TFWRFolders
             if (canvas == null) return;
             ApplyTheme();
             Layout();
-            ClearRows();
 
             string dir = SaveDir();
             var ignore = IgnoreRules.Load(dir);
@@ -980,13 +1004,6 @@ namespace TFWRFolders
             {
                 if (Directory.Exists(dir))
                 {
-                    if (File.Exists(Path.Combine(dir, ".farmignore")))
-                    {
-                        AddRow(".farmignore", null, "", 0, false, ignoreSelected,
-                            OpenIgnoreFile,
-                            pos => { ignoreSelected = true; selectedLeaf = null; selectedFolder = ""; ShowTreeMenu(pos); });
-                    }
-
                     foreach (var f in Directory.EnumerateFiles(dir, "*.py", SearchOption.TopDirectoryOnly))
                     {
                         var leaf = Path.GetFileNameWithoutExtension(f);
@@ -1012,6 +1029,50 @@ namespace TFWRFolders
             catch (Exception e) { status = "!error: " + e.Message; }
 
             rootLeaves.Sort(StringComparer.OrdinalIgnoreCase);
+
+            string signature = TreeSignature(dir, rootLeaves, folderNames, filesByFolder);
+            if (signature != treeSignature)
+            {
+                treeSignature = signature;
+                BuildRows(dir, rootLeaves, folderNames, filesByFolder);
+            }
+
+            if (string.IsNullOrEmpty(status) && FolderSync.Conflicts.Count > 0)
+                status = "!" + FolderSync.Conflicts.Count + " name conflict(s): " + FolderSync.Conflicts[0];
+
+            if (deleteIcon != null) deleteIcon.interactable = selectedLeaf != null || ignoreSelected;
+        }
+
+        // Comment: a row rebuild is only needed when the listing or the selection changed.
+        private string TreeSignature(string dir, List<string> rootLeaves, SortedSet<string> folderNames, Dictionary<string, List<string>> filesByFolder)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(File.Exists(Path.Combine(dir, ".farmignore")) ? '1' : '0');
+            sb.Append('|').Append(selectedLeaf ?? "").Append('|').Append(selectedFolder).Append('|').Append(ignoreSelected ? '1' : '0');
+            var collapsedNames = new List<string>(collapsed);
+            collapsedNames.Sort(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < collapsedNames.Count; i++) sb.Append('|').Append(collapsedNames[i]);
+            for (int i = 0; i < rootLeaves.Count; i++) sb.Append('|').Append(rootLeaves[i]);
+            foreach (var folder in folderNames) sb.Append('|').Append(folder);
+            foreach (var pair in filesByFolder)
+            {
+                sb.Append('|').Append(pair.Key);
+                pair.Value.Sort(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < pair.Value.Count; i++) sb.Append(',').Append(pair.Value[i]);
+            }
+            return sb.ToString();
+        }
+
+        private void BuildRows(string dir, List<string> rootLeaves, SortedSet<string> folderNames, Dictionary<string, List<string>> filesByFolder)
+        {
+            ClearRows();
+            bool hasIgnore = File.Exists(Path.Combine(dir, ".farmignore"));
+            if (hasIgnore)
+            {
+                AddRow(".farmignore", null, "", 0, false, ignoreSelected,
+                    OpenIgnoreFile,
+                    pos => { ignoreSelected = true; selectedLeaf = null; selectedFolder = ""; ShowTreeMenu(pos); });
+            }
 
             foreach (var leaf in rootLeaves)
             {
@@ -1062,9 +1123,6 @@ namespace TFWRFolders
                 }
             }
 
-            if (string.IsNullOrEmpty(status) && FolderSync.Conflicts.Count > 0)
-                status = "!" + FolderSync.Conflicts.Count + " name conflict(s): " + FolderSync.Conflicts[0];
-
             if (!string.IsNullOrEmpty(selectedLeaf))
             {
                 bool present = rootLeaves.Any(l => string.Equals(l, selectedLeaf, StringComparison.OrdinalIgnoreCase))
@@ -1079,8 +1137,6 @@ namespace TFWRFolders
                         true);
                 }
             }
-
-            if (deleteIcon != null) deleteIcon.interactable = selectedLeaf != null || ignoreSelected;
         }
 
         private void AddRow(string label, string leaf, string folder, int depth, bool isFolder, bool selected, Action onClick, Action<Vector2> onContext = null, bool mutedRow = false)
@@ -1229,8 +1285,9 @@ namespace TFWRFolders
             {
                 new MenuItem("Copy output", true, delegate
                 {
-                    var logger = GetLogger();
-                    GUIUtility.systemCopyBuffer = logger != null ? (logger.GetOutputString() ?? "") : (consoleText != null ? consoleText.text : "");
+                    GUIUtility.systemCopyBuffer = consoleText != null && !string.IsNullOrEmpty(consoleText.text)
+                        ? consoleText.text
+                        : CurrentLoggerText();
                     status = "output copied";
                 }),
                 new MenuItem("Clear", true, ClearConsole)
@@ -1347,18 +1404,41 @@ namespace TFWRFolders
         private void UpdateConsole(bool force)
         {
             if (!consoleVisible && !force) return;
-            string loggerText = "";
-            try
+            string loggerText = CurrentLoggerText();
+
+            if (force)
             {
-                var logger = GetLogger();
-                if (logger != null) loggerText = logger.GetOutputString() ?? "";
+                try
+                {
+                    string path = OutputFilePath();
+                    long bytes = File.Exists(path) ? new FileInfo(path).Length : -1L;
+                    Plugin.Log?.LogInfo("[Folders] terminal path=" + path + " bytes=" + bytes + " logger=" + loggerText.Length);
+                }
+                catch { }
             }
-            catch { }
 
             // Comment: quick_print lands in output.txt, not the logger list; show both.
             string printed = ReadPrintedOutput();
-            string text = printed;
-            if (loggerText.Length > 0) text = text.Length > 0 ? text + "\n" + loggerText : loggerText;
+            string marked = TextEdit.MarkLogErrors(loggerText);
+            string body = printed;
+            if (marked.Length > 0) body = body.Length > 0 ? body + "\n" + marked : marked;
+
+            var windowIssues = WindowProblems();
+            var issues = CollectProblems(windowIssues, loggerText);
+            string text;
+            if (problemsVisible)
+            {
+                text = issues.Count == 0 ? "No problems." : "Problems (" + issues.Count + ")\n" + string.Join("\n", issues.ToArray());
+            }
+            else
+            {
+                text = body;
+                if (windowIssues.Count > 0)
+                    text = (text.Length > 0 ? text + "\n" : "") + string.Join("\n", windowIssues.ToArray());
+            }
+
+            if (problemsLabel != null)
+                problemsLabel.text = issues.Count > 0 ? "Problems " + issues.Count : "Problems";
 
             if (!force && text == lastConsole) return;
             lastConsole = text;
@@ -1368,10 +1448,88 @@ namespace TFWRFolders
             if (consoleScroll != null) consoleScroll.verticalNormalizedPosition = 0f;
         }
 
+        private string CurrentLoggerText()
+        {
+            try
+            {
+                var logger = GetLogger();
+                return logger != null ? (logger.GetOutputString() ?? "") : "";
+            }
+            catch { return ""; }
+        }
+
+        private void ToggleProblems()
+        {
+            problemsVisible = !problemsVisible;
+            lastConsole = null;
+            UpdateConsole(true);
+            status = problemsVisible ? "showing problems" : "showing output";
+        }
+
+        private List<string> CollectProblems(List<string> windowIssues, string loggerText)
+        {
+            var list = new List<string>(windowIssues);
+            var seen = new HashSet<string>(windowIssues, StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(loggerText))
+            {
+                // Comment: only errors since the last run start; the logger keeps old lines.
+                string recent = loggerText;
+                if (!string.IsNullOrEmpty(errorBaselineText) && loggerText.StartsWith(errorBaselineText, StringComparison.Ordinal))
+                    recent = loggerText.Substring(errorBaselineText.Length);
+
+                var lines = recent.Split('\n');
+                for (int i = 0; i < lines.Length && list.Count < 40; i++)
+                {
+                    string trimmed = lines[i].TrimStart();
+                    if (!trimmed.StartsWith("Error: ", StringComparison.Ordinal)) continue;
+                    string item = "[Error] " + trimmed.Substring(7).TrimEnd('\r');
+                    if (seen.Add(item)) list.Add(item);
+                }
+            }
+            return list;
+        }
+
+        private List<string> WindowProblems()
+        {
+            var list = new List<string>();
+            try
+            {
+                var ws = MainSim.Inst != null ? MainSim.Inst.workspace : null;
+                if (ws == null) return list;
+                foreach (var cw in ws.codeWindows.Values)
+                {
+                    if (cw == null) continue;
+                    string message = ErrorStringField != null ? ErrorStringField.GetValue(cw) as string : null;
+                    if (string.IsNullOrEmpty(message)) continue;
+
+                    int index = 0;
+                    try { if (ErrorIndexField != null) index = (int)ErrorIndexField.GetValue(cw); } catch { }
+                    string code = "";
+                    try { if (cw.CodeInput != null) code = cw.CodeInput.text ?? ""; } catch { }
+                    int line = 1;
+                    for (int i = 0; i < index && i < code.Length; i++) if (code[i] == '\n') line++;
+                    list.Add("[Error] " + cw.fileName + ":" + line + " " + message);
+                }
+            }
+            catch { }
+            return list;
+        }
+
         private static string OutputFilePath()
         {
-            try { return Path.Combine(Helper.persistentDataPath, "output.txt"); }
-            catch { return Path.Combine(SaveDir(), "output.txt"); }
+            try
+            {
+                if (!string.IsNullOrEmpty(Application.persistentDataPath))
+                    return Path.Combine(Application.persistentDataPath, "output.txt");
+            }
+            catch { }
+            try
+            {
+                if (!string.IsNullOrEmpty(Helper.persistentDataPath))
+                    return Path.Combine(Helper.persistentDataPath, "output.txt");
+            }
+            catch { }
+            return Path.Combine(SaveDir(), "output.txt");
         }
 
         private string ReadPrintedOutput()
@@ -1379,9 +1537,14 @@ namespace TFWRFolders
             try
             {
                 string path = OutputFilePath();
-                if (!File.Exists(path)) return "";
+                if (!File.Exists(path))
+                {
+                    string fallback = Path.Combine(SaveDir(), "output.txt");
+                    if (File.Exists(fallback)) path = fallback;
+                    else return "";
+                }
                 DateTime stamp = File.GetLastWriteTimeUtc(path);
-                if (stamp == outputStamp) return outputCache;
+                if (stamp == outputStamp && path == outputStampPath) return outputCache;
 
                 using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
@@ -1389,9 +1552,17 @@ namespace TFWRFolders
                     stream.Seek(start, SeekOrigin.Begin);
                     var buffer = new byte[stream.Length - start];
                     int read = stream.Read(buffer, 0, buffer.Length);
-                    outputCache = System.Text.Encoding.UTF8.GetString(buffer, 0, read);
+                    int offset = 0;
+                    if (start > 0)
+                    {
+                        // Comment: drop a partial UTF-8 line when the tail starts mid-line.
+                        int newline = Array.IndexOf(buffer, (byte)'\n');
+                        offset = newline >= 0 ? newline + 1 : 0;
+                    }
+                    outputCache = System.Text.Encoding.UTF8.GetString(buffer, offset, read - offset);
                 }
                 outputStamp = stamp;
+                outputStampPath = path;
                 return outputCache;
             }
             catch { return ""; }
@@ -1412,6 +1583,7 @@ namespace TFWRFolders
                 outputStamp = DateTime.MinValue;
             }
             catch (Exception e) { Plugin.Log?.LogWarning("[Folders] clear output file: " + e.Message); }
+            errorBaselineText = "";
             lastConsole = null;
             UpdateConsole(true);
         }
@@ -1503,6 +1675,7 @@ namespace TFWRFolders
             if (!win.TryGetComponent<CodeWindow>(out cw)) return;
             try
             {
+                errorBaselineText = CurrentLoggerText();
                 cw.PressExecuteOrStop();
                 status = "run/stop: " + selectedLeaf;
             }
@@ -1553,7 +1726,6 @@ namespace TFWRFolders
                         float step = ws.codeWindows.Count;
                         ws.OpenCodeWindow(name, "", ws.farmPosition.anchoredPosition + new Vector2(300f + 30f * step, -150f - 30f * step));
                     }
-                    FolderMap.SetFolder(name, folder);
                     ignoreSelected = false;
                     selectedLeaf = name;
                     selectedFolder = folder;
@@ -1604,6 +1776,14 @@ namespace TFWRFolders
                     string oldRel = (folder.Length == 0 ? "" : folder + "/") + oldLeaf;
                     if (LeafTaken(name, oldRel)) { status = "!the name '" + name + "' is already used"; return; }
 
+                    string oldPath = PathFor(oldLeaf, folder);
+                    string newPath = PathFor(name, folder);
+                    if (File.Exists(newPath) && !string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        status = "!a file named '" + name + "' already exists there";
+                        return;
+                    }
+
                     var ws = MainSim.Inst.workspace;
                     Window win;
                     if (ws.TryGetOpenWindow(oldLeaf, out win))
@@ -1614,13 +1794,10 @@ namespace TFWRFolders
                         if (!ws.TryGetOpenWindow(name, out renamed)) { status = "!the game rejected that name"; return; }
                     }
 
-                    string oldPath = PathFor(oldLeaf, folder);
-                    string newPath = PathFor(name, folder);
                     FolderMap.SetFolder(name, folder);
                     FolderMap.Remove(oldLeaf);
 
                     Directory.CreateDirectory(Path.GetDirectoryName(newPath));
-                    if (File.Exists(newPath) && !string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase)) File.Delete(newPath);
                     if (File.Exists(oldPath)) File.Move(oldPath, newPath);
 
                     ignoreSelected = false;

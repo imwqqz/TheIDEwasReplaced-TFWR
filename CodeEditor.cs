@@ -286,14 +286,59 @@ namespace TFWRFolders
             if (inputText == null) return;
             CloseCompletion();
             editing = true;
-            string text = Text;
-            int index = -1;
-            try { index = TMP_TextUtilities.FindIntersectingCharacter(inputText, screen, null, true); }
-            catch { }
-            if (index < 0) caret = text.Length;
-            else caret = TextEdit.Clamp(inputText.textInfo.characterInfo[index].index, text);
+            caret = CaretFromScreen(screen);
             DrawCaret();
             DebugLog("[Folders] editor click caret=" + caret);
+        }
+
+        // Comment: click maps to an insertion point, not just a character, so the line end is reachable.
+        private int CaretFromScreen(Vector2 screen)
+        {
+            string text = Text;
+            var info = inputText.textInfo;
+            if (info == null || info.characterCount == 0) return 0;
+            try
+            {
+                int hit = TMP_TextUtilities.FindIntersectingCharacter(inputText, screen, null, true);
+                if (hit >= 0 && hit < info.characterCount)
+                    return CharacterCaret(info.characterInfo[hit], screen);
+
+                int line = TMP_TextUtilities.FindNearestLine(inputText, screen, null);
+                if (line >= 0 && line < info.lineCount)
+                {
+                    var li = info.lineInfo[line];
+                    int first = Mathf.Clamp(li.firstCharacterIndex, 0, info.characterCount - 1);
+                    int last = Mathf.Clamp(li.lastCharacterIndex, 0, info.characterCount - 1);
+                    int startIndex = Mathf.Clamp(info.characterInfo[first].index, 0, text.Length);
+                    int lineEnd = text.IndexOf('\n', startIndex);
+                    if (lineEnd < 0) lineEnd = text.Length;
+
+                    if (screen.x >= ScreenX(info.characterInfo[last].topRight)) return lineEnd;
+
+                    int near = TMP_TextUtilities.FindNearestCharacterOnLine(inputText, screen, line, null, true);
+                    if (near >= 0 && near < info.characterCount)
+                        return CharacterCaret(info.characterInfo[near], screen);
+                    return startIndex;
+                }
+
+                int any = TMP_TextUtilities.FindNearestCharacter(inputText, screen, null, true);
+                if (any >= 0 && any < info.characterCount)
+                    return Mathf.Clamp(info.characterInfo[any].index, 0, text.Length);
+            }
+            catch { }
+            return text.Length;
+        }
+
+        private int CharacterCaret(TMP_CharacterInfo ch, Vector2 screen)
+        {
+            float middle = (ScreenX(ch.bottomLeft) + ScreenX(ch.topRight)) * 0.5f;
+            int index = ch.index + (screen.x > middle ? 1 : 0);
+            return Mathf.Clamp(index, 0, Text.Length);
+        }
+
+        private float ScreenX(Vector3 local)
+        {
+            return RectTransformUtility.WorldToScreenPoint(null, inputText.transform.TransformPoint(local)).x;
         }
 
         internal void Flush()
@@ -767,7 +812,11 @@ namespace TFWRFolders
         private HashSet<string> Names()
         {
             string key = "";
-            try { key = IdePanel.SaveDir() + "|" + (bound != null ? bound.fileName : (rawPath ?? "")); }
+            try
+            {
+                int count = bound != null && bound.tokenizedIdentifiers != null ? bound.tokenizedIdentifiers.Count : 0;
+                key = IdePanel.SaveDir() + "|" + (bound != null ? bound.fileName : (rawPath ?? "")) + "|" + count;
+            }
             catch { }
             if (completeNames != null && key == completeNamesKey) return completeNames;
 

@@ -61,6 +61,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 | 25 | Drag inside the Project list | The list does not scroll; the wheel does. |
 | 26 | Select a folder row, click new file; then select a file, click new file | Prefilled with the folder first, empty (root) the second time; the file lands where the prompt said. |
 | 27 | Run a script that calls `quick_print`, open the Terminal | The printed text appears, matching `output.txt`; Clear empties the panel and the file. |
+| 27b | Run a script with an undefined name, then press `Problems` | The panel lists `[Error] <file>:<line> <message>`; the output view shows the same error marked `[Error]`. |
 | 28 | Type `quic` in the editor, then Ctrl+Space | A popup lists `quick_print`; Up/Down/Enter insert it, Esc closes. |
 | 29 | Click in the middle of a line, then type two characters | The caret sits under the click and moves with the typing, not at a screen edge. |
 | 17 | F10 to hide IDE | Normal canvas layout is intact; windows still open. |

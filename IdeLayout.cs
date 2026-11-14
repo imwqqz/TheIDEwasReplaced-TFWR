@@ -56,9 +56,12 @@ namespace TFWRFolders
             r.StripH = bodyH;
             r.StripW = stripWidth;
 
-            float treeW = Math.Min(treeWidth, Math.Max(CollapsedTreeWidth, w - 120f - stripWidth));
-            // Comment: the tool strip is always the leftmost column; the tree keeps its side.
-            r.StripX = 0f;
+            float treeW = Math.Min(treeWidth, Math.Max(CollapsedTreeWidth, w - 120f));
+            // Comment: the tool strip is a column inside the Project panel, under its header.
+            r.StripW = stripWidth;
+            r.StripY = bodyBottom;
+            r.StripH = Math.Max(10f, bodyH - 22f);
+
             if (explorerRight)
             {
                 r.TreeX = w - treeW;
@@ -67,20 +70,21 @@ namespace TFWRFolders
                 r.SepY = bodyBottom;
                 r.SepW = Separator;
                 r.SepH = bodyH;
-                r.EditorX = stripWidth;
-                r.EditorW = Math.Max(10f, r.SepX - r.EditorX);
+                r.EditorX = 0f;
+                r.EditorW = Math.Max(10f, r.SepX - Separator);
             }
             else
             {
-                r.TreeX = stripWidth;
+                r.TreeX = 0f;
                 r.TreeW = treeW;
-                r.SepX = r.TreeX + treeW;
+                r.SepX = treeW;
                 r.SepY = bodyBottom;
                 r.SepW = Separator;
                 r.SepH = bodyH;
                 r.EditorX = r.SepX + Separator;
                 r.EditorW = Math.Max(10f, w - r.EditorX);
             }
+            r.StripX = r.TreeX + r.TreeW - stripWidth;
             return r;
         }
 

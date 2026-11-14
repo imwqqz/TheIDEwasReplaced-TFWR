@@ -57,11 +57,13 @@ namespace TFWRFolders
         {
             text = text ?? "";
             replacement = replacement ?? "";
+            caret = TextEdit.Clamp(caret, text);
             int start;
             WordAt(text, caret, out start);
-            caret = TextEdit.Clamp(caret, text);
+            int end = caret;
+            while (end < text.Length && IsNameChar(text[end])) end++;
             newCaret = start + replacement.Length;
-            return text.Substring(0, start) + replacement + text.Substring(caret);
+            return text.Substring(0, start) + replacement + text.Substring(end);
         }
 
         public static void AddNames(string source, HashSet<string> names)

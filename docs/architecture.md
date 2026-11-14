@@ -87,8 +87,9 @@ file operation.
   the strip width are inputs, so the config applies without a relaunch.
 - All surfaces are opaque: shades are derived by multiplying the theme frame colour.
 - **Explorer header icons**: new file, new folder, collapse/expand all, delete, menu; right-click
-  on a row opens the same actions as a context list. Run/stop, save, terminal and hide live in a
-  24 px vertical strip at the window's left edge, hidden with the explorer.
+  on a row opens the same actions as a context list; the icons sit on the header row before the
+  collapse chevron. Run/stop, save, terminal and hide live in a 24 px column inside the Project
+  panel, at its right edge below the header; it hides with the panel.
 - **Drag and drop**: a file row can be dropped on a folder header or on any file row inside that
   folder (move), on the editor (open) or on an empty part of the tree (move to root). Dropping on
   `.farmignore` is refused. `DragTarget.FolderFor` maps the row under the pointer to the receiving
@@ -118,9 +119,12 @@ file operation.
   F10; the tree re-reads the rules afterwards.
 - **Terminal** shows the tail of `output.txt` in the game's persistent data folder (where
   `quick_print` writes) followed by `Logger.GetOutputString()` (reflection on `MainSim.logger`),
-  polled every 0.4 s while visible and reloaded only when the file timestamp changes. Clear calls
-  `Logger.Clear()` and truncates the file. Its header has no subtitle and right-click opens
-  Copy output / Clear.
+  polled every 0.4 s while visible and reloaded only when the file timestamp changes. Logger lines
+  starting `Error:` / `Warning:` are marked `[Error]` / `[Warn]`. Clear calls `Logger.Clear()` and
+  truncates the file. Its header has no subtitle and right-click opens Copy output / Clear.
+- **Problems**: the `Problems` button swaps the panel body for a list built from each open
+  window's private `errorString` plus the logger's `Error:` lines; window errors carry
+  `file:line` from `errorStartIndex`. It is rebuilt on the same 0.4 s poll.
 - While open, `EnforceSingleEditor` hides every code window **and docs window**
   (`SetActive(false)`, tracked in `touched`); windows created later are hidden on the next frame.
   The selected script is bound to the editor through its hidden window.

@@ -73,6 +73,20 @@ namespace TFWRFolders
             return Math.Min(start + column, end);
         }
 
+        // Comment: the game logs "Error: ..." / "Warning: ..."; mark those lines for the panel.
+        public static string MarkLogErrors(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            var lines = text.Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string trimmed = lines[i].TrimStart();
+                if (trimmed.StartsWith("Error: ", StringComparison.Ordinal)) lines[i] = "[Error] " + trimmed.Substring(7);
+                else if (trimmed.StartsWith("Warning: ", StringComparison.Ordinal)) lines[i] = "[Warn] " + trimmed.Substring(9);
+            }
+            return string.Join("\n", lines);
+        }
+
         // Comment: TMP caret coords are centred on the text rect; the caret is anchored to its corner.
         public static void CaretAnchor(float localX, float localY, float width, float height, out float x, out float y)
         {

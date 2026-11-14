@@ -83,6 +83,13 @@ namespace TFWRFolders
                 }
 
                 Log.LogInfo("[Folders] game=" + Application.version + " engine=" + Application.unityVersion + " exe=" + exeVersion + " core=" + coreHash);
+                try
+                {
+                    var self = typeof(Plugin).Assembly.Location;
+                    if (!string.IsNullOrEmpty(self) && File.Exists(self))
+                        Log.LogInfo("[Folders] plugin " + self + " " + File.GetLastWriteTimeUtc(self).ToString("yyyy-MM-dd HH:mm:ss") + "Z");
+                }
+                catch { }
                 Log.LogInfo("[Folders] tested against game 0.1 / Unity 6000.0.43f1 / Steam build 26462009 / Core.dll F0EFDA7C138DE8028B1769C121A4B5C17B6BB538AEAE5A67D1881E7C4EBD7D25");
                 if (!string.IsNullOrEmpty(exeVersion) && exeVersion != "6000.0.43.9905963")
                     Log.LogWarning("[Folders] game build differs from the tested one; patches are guarded but verify saving.");

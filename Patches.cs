@@ -241,7 +241,7 @@ namespace TFWRFolders
                 }
 
                 var builtinsFile = new FileInfo(Path.Combine(savePath, "__builtins__.py"));
-                if (!builtinsFile.Exists) GameAccess.WriteAtomically(builtinsFile, builtins);
+                if (builtins != null) GameAccess.WriteAtomically(builtinsFile, builtins);
 
                 // Comment: same as vanilla: delete untracked root .py files.
                 foreach (var f in Directory.GetFiles(savePath))
@@ -260,6 +260,25 @@ namespace TFWRFolders
                 Plugin.Log?.LogError("[Folders] write failed, falling back to vanilla writer (folder files may be stale): " + e);
                 return true;
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(Saver), "Save")]
+    internal static class Saver_Save_Patch
+    {
+        // Comment: pending keystrokes reach the hidden window before the game captures it.
+        private static void Prefix()
+        {
+            IdePanel.FlushEditor();
+        }
+    }
+
+    [HarmonyPatch(typeof(Saver), "SaveCode")]
+    internal static class Saver_SaveCode_Patch
+    {
+        private static void Prefix()
+        {
+            IdePanel.FlushEditor();
         }
     }
 
