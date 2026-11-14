@@ -72,5 +72,12 @@ namespace TFWRFolders
             int end = target + 1 < starts.Count ? starts[target + 1] - 1 : text.Length;
             return Math.Min(start + column, end);
         }
+
+        // Comment: TMP caret coords are centred on the text rect; the caret is anchored to its corner.
+        public static void CaretAnchor(float localX, float localY, float width, float height, out float x, out float y)
+        {
+            x = localX + width * 0.5f;
+            y = localY + height * 0.5f;
+        }
     }
 }

@@ -40,7 +40,8 @@ namespace TFWRFolders
         private RectTransform titleBar;
         private Image titleBarBg;
         private Text titleText;
-        private RectTransform toolbar;
+        private RectTransform toolStrip;
+        private Image toolStripBg;
         private Text runText;
         private RectTransform treePanel;
         private Image treeBg;
@@ -74,7 +75,6 @@ namespace TFWRFolders
         private Text collapseText;
 
         private readonly List<Button> themedButtons = new List<Button>();
-        private readonly List<Image> dividers = new List<Image>();
         private readonly HashSet<string> collapsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<Window> touched = new HashSet<Window>();
         private readonly List<string> lastFolders = new List<string>();
@@ -86,6 +86,8 @@ namespace TFWRFolders
         private float nextRefresh;
         private float nextConsole;
         private string lastConsole;
+        private string outputCache = "";
+        private DateTime outputStamp = DateTime.MinValue;
         private bool consoleVisible = true;
         private bool explorerCollapsed;
         private bool rectLoaded;
@@ -179,6 +181,7 @@ namespace TFWRFolders
         {
             public RectTransform rect;
             public string folder;
+            public string leaf;
             public bool isFolder;
             public Image image;
             public Color baseColor;
@@ -577,33 +580,28 @@ namespace TFWRFolders
             titleRt.anchorMin = Vector2.zero;
             titleRt.anchorMax = Vector2.one;
             titleRt.offsetMin = new Vector2(10f, 0f);
-            titleRt.offsetMax = new Vector2(-236f, 0f);
+            titleRt.offsetMax = new Vector2(-18f, 0f);
             titleText.horizontalOverflow = HorizontalWrapMode.Wrap;
             titleText.verticalOverflow = VerticalWrapMode.Truncate;
 
-            toolbar = MakeRect(titleBar, "Toolbar");
-            SetRect(toolbar, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(228f, -6f), new Vector2(-4f, 0f));
-            var toolbarLayout = toolbar.gameObject.AddComponent<HorizontalLayoutGroup>();
-            toolbarLayout.spacing = 2f;
-            toolbarLayout.childControlWidth = true;
-            toolbarLayout.childControlHeight = true;
-            toolbarLayout.childForceExpandWidth = false;
-            toolbarLayout.childForceExpandHeight = true;
+            toolStrip = MakeRect(windowRect, "ToolStrip");
+            toolStripBg = toolStrip.gameObject.AddComponent<Image>();
+            toolStripBg.color = FallbackBg;
+            var stripLayout = toolStrip.gameObject.AddComponent<VerticalLayoutGroup>();
+            stripLayout.spacing = 2f;
+            stripLayout.padding = new RectOffset(2, 2, 6, 2);
+            stripLayout.childControlWidth = true;
+            stripLayout.childControlHeight = true;
+            stripLayout.childForceExpandWidth = true;
+            stripLayout.childForceExpandHeight = false;
+            stripLayout.childAlignment = TextAnchor.UpperCenter;
 
-            var runButton = MakeIcon(toolbar, "\u25B6", RunSelected);
+            var runButton = MakeIcon(toolStrip, "\u25B6", RunSelected);
             runText = runButton.GetComponentInChildren<Text>();
             themedButtons.Add(runButton);
-            themedButtons.Add(MakeIcon(toolbar, "\u2193", SaveCode));
-            themedButtons.Add(MakeIcon(toolbar, ">_", ToggleConsole));
-            AddDivider();
-            themedButtons.Add(MakeIcon(toolbar, "+", NewFile));
-            themedButtons.Add(MakeIcon(toolbar, "\u229E", NewFolder));
-            themedButtons.Add(MakeIcon(toolbar, "\u21D5", ToggleAllCollapsed));
-            deleteIcon = MakeIcon(toolbar, "\u00D7", DeleteSelected);
-            themedButtons.Add(deleteIcon);
-            themedButtons.Add(MakeIcon(toolbar, "\u22EE", delegate { ShowTreeMenu(Input.mousePosition); }));
-            AddDivider();
-            themedButtons.Add(MakeIcon(toolbar, "_", delegate { SetOpen(false); }));
+            themedButtons.Add(MakeIcon(toolStrip, "\u2193", SaveCode));
+            themedButtons.Add(MakeIcon(toolStrip, ">_", ToggleConsole));
+            themedButtons.Add(MakeIcon(toolStrip, "_", delegate { SetOpen(false); }));
 
             treePanel = MakeRect(windowRect, "Tree");
             treeBg = treePanel.gameObject.AddComponent<Image>();
@@ -614,7 +612,24 @@ namespace TFWRFolders
             treeHeader = MakeRect(treePanel, "Header");
             SetRect(treeHeader, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, 22f), Vector2.zero);
             treeTitle = MakeText(treeHeader, "Project", 11, FallbackMuted, TextAnchor.MiddleLeft, false);
-            SetRect((RectTransform)treeTitle.transform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0f, 0.5f), new Vector2(-24f, 0f), new Vector2(8f, 0f));
+            SetRect((RectTransform)treeTitle.transform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0f, 0.5f), new Vector2(-132f, 0f), new Vector2(8f, 0f));
+
+            var treeIcons = MakeRect(treeHeader, "Icons");
+            SetRect(treeIcons, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(100f, 0f), new Vector2(-20f, 0f));
+            var iconsLayout = treeIcons.gameObject.AddComponent<HorizontalLayoutGroup>();
+            iconsLayout.spacing = 0f;
+            iconsLayout.childControlWidth = true;
+            iconsLayout.childControlHeight = true;
+            iconsLayout.childForceExpandWidth = false;
+            iconsLayout.childForceExpandHeight = true;
+            iconsLayout.childAlignment = TextAnchor.MiddleCenter;
+
+            themedButtons.Add(MakeIcon(treeIcons, "+", NewFile));
+            themedButtons.Add(MakeIcon(treeIcons, "\u229E", NewFolder));
+            themedButtons.Add(MakeIcon(treeIcons, "\u21D5", ToggleAllCollapsed));
+            deleteIcon = MakeIcon(treeIcons, "\u00D7", DeleteSelected);
+            themedButtons.Add(deleteIcon);
+            themedButtons.Add(MakeIcon(treeIcons, "\u22EE", delegate { ShowTreeMenu(Input.mousePosition); }));
 
             collapseBtn = MakeButton(treePanel, "<", ToggleExplorer, 10);
             SetRect((RectTransform)collapseBtn.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(18f, 18f), new Vector2(-2f, -1f));
@@ -723,20 +738,6 @@ namespace TFWRFolders
             gripDrag.resize = true;
         }
 
-        private void AddDivider()
-        {
-            var go = new GameObject("Divider", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
-            go.transform.SetParent(toolbar, false);
-            var image = go.GetComponent<Image>();
-            image.color = FallbackBg;
-            image.raycastTarget = false;
-            dividers.Add(image);
-            var layout = go.GetComponent<LayoutElement>();
-            layout.preferredWidth = 1f;
-            layout.flexibleWidth = 0f;
-            layout.preferredHeight = 14f;
-        }
-
         private static RectTransform MakeRect(Transform parent, string name)
         {
             var go = new GameObject(name, typeof(RectTransform));
@@ -762,7 +763,7 @@ namespace TFWRFolders
             rt.anchoredPosition = new Vector2(x, y);
         }
 
-        private static Font UiFont
+        internal static Font UiFont
         {
             get
             {
@@ -856,12 +857,14 @@ namespace TFWRFolders
             bool right = !string.Equals(Plugin.ExplorerSide.Value, "Left", StringComparison.OrdinalIgnoreCase);
             float treeW = explorerCollapsed ? IdeLayout.CollapsedTreeWidth : Plugin.TreeWidth.Value;
             float termH = consoleVisible ? Plugin.ConsoleHeight.Value : 0f;
+            float stripW = explorerCollapsed ? 0f : IdeLayout.ToolStripWidth;
 
-            var r = IdeLayout.Compute(windowSize.x, windowSize.y, right, treeW, termH);
+            var r = IdeLayout.Compute(windowSize.x, windowSize.y, right, treeW, termH, stripW);
             windowRect.sizeDelta = windowSize;
 
             ApplyRegion(titleBar, r.TitleX, r.TitleY, r.TitleW, r.TitleH);
             ApplyRegion(treePanel, r.TreeX, r.TreeY, r.TreeW, r.TreeH);
+            ApplyRegion(toolStrip, r.StripX, r.StripY, r.StripW, r.StripH);
             ApplyRegion(editorRect, r.EditorX, r.EditorY, r.EditorW, r.EditorH);
             ApplyRegion(consolePanel, r.TerminalX, r.TerminalY, r.TerminalW, r.TerminalH);
             ApplyRegion(statusBar, r.StatusX, r.StatusY, r.StatusW, r.StatusH);
@@ -873,6 +876,7 @@ namespace TFWRFolders
 
             treeHeader.gameObject.SetActive(!explorerCollapsed);
             treeScrollRect.gameObject.SetActive(!explorerCollapsed);
+            toolStrip.gameObject.SetActive(!explorerCollapsed);
             collapseText.text = explorerCollapsed ? ">" : "<";
 
             treeScrollRect.offsetMin = new Vector2(4f, 4f);
@@ -922,12 +926,12 @@ namespace TFWRFolders
 
             titleBarBg.color = titleCol;
             windowBg.color = bg;
+            toolStripBg.color = titleCol;
             treeBg.color = treeCol;
             consoleBg.color = consoleCol;
             statusBg.color = statusCol;
             hSepImg.color = sepCol;
             gripImg.color = sepCol;
-            foreach (var divider in dividers) if (divider != null) divider.color = sepCol;
 
             titleText.color = fg;
             treeTitle.color = muted;
@@ -1113,6 +1117,7 @@ namespace TFWRFolders
             {
                 rect = (RectTransform)go.transform,
                 folder = folder,
+                leaf = leaf,
                 isFolder = isFolder,
                 image = img,
                 baseColor = baseColor
@@ -1342,19 +1347,54 @@ namespace TFWRFolders
         private void UpdateConsole(bool force)
         {
             if (!consoleVisible && !force) return;
-            string text = "";
+            string loggerText = "";
             try
             {
                 var logger = GetLogger();
-                if (logger != null) text = logger.GetOutputString() ?? "";
+                if (logger != null) loggerText = logger.GetOutputString() ?? "";
             }
             catch { }
+
+            // Comment: quick_print lands in output.txt, not the logger list; show both.
+            string printed = ReadPrintedOutput();
+            string text = printed;
+            if (loggerText.Length > 0) text = text.Length > 0 ? text + "\n" + loggerText : loggerText;
+
             if (!force && text == lastConsole) return;
             lastConsole = text;
             if (text.Length > 16000) text = "..." + text.Substring(text.Length - 16000);
             consoleText.text = text;
             Canvas.ForceUpdateCanvases();
             if (consoleScroll != null) consoleScroll.verticalNormalizedPosition = 0f;
+        }
+
+        private static string OutputFilePath()
+        {
+            try { return Path.Combine(Helper.persistentDataPath, "output.txt"); }
+            catch { return Path.Combine(SaveDir(), "output.txt"); }
+        }
+
+        private string ReadPrintedOutput()
+        {
+            try
+            {
+                string path = OutputFilePath();
+                if (!File.Exists(path)) return "";
+                DateTime stamp = File.GetLastWriteTimeUtc(path);
+                if (stamp == outputStamp) return outputCache;
+
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    long start = Math.Max(0L, stream.Length - 16000L);
+                    stream.Seek(start, SeekOrigin.Begin);
+                    var buffer = new byte[stream.Length - start];
+                    int read = stream.Read(buffer, 0, buffer.Length);
+                    outputCache = System.Text.Encoding.UTF8.GetString(buffer, 0, read);
+                }
+                outputStamp = stamp;
+                return outputCache;
+            }
+            catch { return ""; }
         }
 
         private void ClearConsole()
@@ -1365,6 +1405,13 @@ namespace TFWRFolders
                 if (logger != null) logger.Clear();
             }
             catch (Exception e) { Plugin.Log?.LogWarning("[Folders] clear console: " + e.Message); }
+            try
+            {
+                File.WriteAllText(OutputFilePath(), "");
+                outputCache = "";
+                outputStamp = DateTime.MinValue;
+            }
+            catch (Exception e) { Plugin.Log?.LogWarning("[Folders] clear output file: " + e.Message); }
             lastConsole = null;
             UpdateConsole(true);
         }
@@ -1383,7 +1430,7 @@ namespace TFWRFolders
 
         // ---------------- actions ----------------
 
-        private static string SaveDir()
+        internal static string SaveDir()
         {
             try { return Saver.GetPathOfSaveDirectory(OptionHolder.GetString("activeSave", "Save0")); }
             catch { return Helper.persistentDataPath + "/Saves/Save0"; }
@@ -1412,12 +1459,7 @@ namespace TFWRFolders
             string dir = SaveDir();
             try
             {
-                foreach (var f in Directory.EnumerateFiles(dir, "*.py", SearchOption.TopDirectoryOnly))
-                {
-                    var l = Path.GetFileNameWithoutExtension(f);
-                    if (string.Equals(l, "__builtins__", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (string.Equals(l, leaf, StringComparison.OrdinalIgnoreCase)) return true;
-                }
+                if (FolderMap.HasRootLeaf(dir, leaf, exceptRel)) return true;
                 var ignore = IgnoreRules.Load(dir);
                 foreach (var f in FolderMap.Scan(dir, Saver.IsValidPortableFileName, ignore))
                 {
@@ -1489,7 +1531,7 @@ namespace TFWRFolders
         private void NewFile()
         {
             if (Busy()) { Refresh(); return; }
-            ShowPrompt("New script", "Folder (empty = root):", selectedFolder, "Name:", "", (folderText, nameText) =>
+            ShowPrompt("New script", "Folder (empty = root):", selectedLeaf == null ? selectedFolder : "", "Name:", "", (folderText, nameText) =>
             {
                 try
                 {

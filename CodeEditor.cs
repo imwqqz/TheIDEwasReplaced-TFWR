@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -39,6 +40,29 @@ namespace TFWRFolders
         private float nextConflictLog;
         private DateTime rawWriteTime;
         private string lastPushed = "";
+
+        private RectTransform completeBox;
+        private readonly List<GameObject> completeRows = new List<GameObject>();
+        private readonly List<UnityEngine.UI.Text> completeTexts = new List<UnityEngine.UI.Text>();
+        private readonly List<UnityEngine.UI.Image> completeImages = new List<UnityEngine.UI.Image>();
+        private readonly List<string> completeOptions = new List<string>();
+        private HashSet<string> completeNames;
+        private string completeNamesKey = "";
+        private int completeIndex;
+        private bool completeOpen;
+
+        private const float CompletionWidth = 240f;
+        private const float CompletionRowHeight = 18f;
+        private const int CompletionMaxRows = 8;
+
+        private static readonly string[] Keywords =
+        {
+            "if", "elif", "else", "for", "while", "def", "return", "break", "continue", "pass",
+            "and", "or", "not", "in", "import", "from", "as", "global", "True", "False", "None",
+            "print", "quick_print", "range", "len", "str", "min", "max", "abs", "random",
+            "num_items", "num_unlocked", "get_pos_x", "get_pos_y", "get_entity_type",
+            "get_ground_type", "can_harvest", "can_move", "get_water", "get_time", "get_tick_count"
+        };
 
         internal int Caret { get { return caret; } }
         internal string Text { get { return input != null ? (input.text ?? "") : ""; } }
@@ -190,6 +214,7 @@ namespace TFWRFolders
         {
             Flush();
             EnsureFont();
+            CloseCompletion();
             rawMode = false;
             rawPath = null;
             bound = cw;
@@ -203,6 +228,7 @@ namespace TFWRFolders
         {
             Flush();
             EnsureFont();
+            CloseCompletion();
             rawMode = true;
             rawPath = path;
             bound = null;
@@ -218,6 +244,7 @@ namespace TFWRFolders
 
         internal void Clear()
         {
+            CloseCompletion();
             bound = null;
             rawMode = false;
             rawPath = null;
@@ -245,6 +272,7 @@ namespace TFWRFolders
         internal void CancelEditing()
         {
             editing = false;
+            CloseCompletion();
             if (caretImage != null) caretImage.color = new Color(caretColor.r, caretColor.g, caretColor.b, 0f);
         }
 
@@ -256,6 +284,7 @@ namespace TFWRFolders
         private void OnClick(Vector2 screen)
         {
             if (inputText == null) return;
+            CloseCompletion();
             editing = true;
             string text = Text;
             int index = -1;
@@ -402,6 +431,7 @@ namespace TFWRFolders
             if (input == null) return;
             if (!fontReady) EnsureFont();
             if (editing) HandleKeys();
+            else if (completeOpen) CloseCompletion();
 
             if (pushAt > 0f && Time.unscaledTime >= pushAt) Push();
 
@@ -451,6 +481,7 @@ namespace TFWRFolders
             UpdateHeight();
             DrawCaret();
             EnsureCaretVisible();
+            if (completeOpen) PositionCompletion();
             HandleWheel();
         }
 
@@ -484,6 +515,25 @@ namespace TFWRFolders
             string text = input.text ?? "";
             int pos = TextEdit.Clamp(caret, text);
             bool changed = false;
+
+            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (ctrl && Input.GetKeyDown(KeyCode.Space))
+            {
+                ShowCompletion(true);
+                return;
+            }
+
+            if (completeOpen)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape)) { CloseCompletion(); return; }
+                if (Input.GetKeyDown(KeyCode.DownArrow)) { MoveCompletion(1); return; }
+                if (Input.GetKeyDown(KeyCode.UpArrow)) { MoveCompletion(-1); return; }
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Tab))
+                {
+                    CommitCompletion();
+                    return;
+                }
+            }
 
             string typed = Input.inputString ?? "";
             for (int i = 0; i < typed.Length; i++)
@@ -524,7 +574,6 @@ namespace TFWRFolders
             if (Input.GetKeyDown(KeyCode.UpArrow)) pos = TextEdit.MoveLine(text, pos, -1);
             if (Input.GetKeyDown(KeyCode.DownArrow)) pos = TextEdit.MoveLine(text, pos, 1);
 
-            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
             if (ctrl && Input.GetKeyDown(KeyCode.V))
             {
                 string clip = GUIUtility.systemCopyBuffer;
@@ -537,8 +586,209 @@ namespace TFWRFolders
             }
 
             caret = TextEdit.Clamp(pos, text);
-            if (changed) SetText(text);
+            if (changed)
+            {
+                SetText(text);
+                RefreshCompletion();
+            }
             else if (Time.unscaledTime >= nextKeyLog) nextKeyLog = Time.unscaledTime + 0.3f;
+        }
+
+        // ---------------- completion ----------------
+
+        private void RefreshCompletion()
+        {
+            ShowCompletion(false);
+        }
+
+        private void ShowCompletion(bool force)
+        {
+            if (!editing || inputText == null) { CloseCompletion(); return; }
+            int start;
+            string word = Completion.WordAt(Text, caret, out start);
+            if (!force && word.Length < 2) { CloseCompletion(); return; }
+            var options = Completion.Match(Names(), word, CompletionMaxRows);
+            if (options.Count == 0) { CloseCompletion(); return; }
+
+            if (completeOpen && SameOptions(options))
+            {
+                PositionCompletion();
+                return;
+            }
+
+            EnsureCompletionUI();
+            completeOptions.Clear();
+            completeOptions.AddRange(options);
+            completeIndex = 0;
+
+            for (int i = 0; i < completeRows.Count; i++)
+            {
+                bool used = i < options.Count;
+                if (completeRows[i].activeSelf != used) completeRows[i].SetActive(used);
+                if (used) completeTexts[i].text = options[i];
+            }
+
+            completeBox.sizeDelta = new Vector2(CompletionWidth, 4f + options.Count * CompletionRowHeight);
+            completeBox.SetAsLastSibling();
+            completeBox.gameObject.SetActive(true);
+            completeOpen = true;
+            HighlightCompletion();
+            PositionCompletion();
+        }
+
+        private bool SameOptions(List<string> options)
+        {
+            if (completeOptions.Count != options.Count) return false;
+            for (int i = 0; i < options.Count; i++)
+                if (!string.Equals(options[i], completeOptions[i], StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        private void EnsureCompletionUI()
+        {
+            if (completeBox != null) return;
+            completeBox = MakeRect(root, "Completion");
+            completeBox.anchorMin = Vector2.zero;
+            completeBox.anchorMax = Vector2.zero;
+            completeBox.pivot = Vector2.zero;
+            var bg = completeBox.gameObject.AddComponent<Image>();
+            bg.color = new Color(0.16f, 0.17f, 0.19f, 0.98f);
+            var swallow = completeBox.gameObject.AddComponent<Button>();
+            swallow.transition = Selectable.Transition.None;
+            var layout = completeBox.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 0f;
+            layout.padding = new RectOffset(2, 2, 2, 2);
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+
+            for (int i = 0; i < CompletionMaxRows; i++)
+            {
+                var go = new GameObject("Option", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+                go.transform.SetParent(completeBox, false);
+                var element = go.GetComponent<LayoutElement>();
+                element.preferredHeight = CompletionRowHeight;
+                element.minHeight = CompletionRowHeight;
+                var image = go.GetComponent<Image>();
+                image.color = new Color(1f, 1f, 1f, 0.02f);
+                var button = go.GetComponent<Button>();
+                button.targetGraphic = image;
+                int index = i;
+                button.onClick.AddListener(delegate { PickCompletion(index); });
+
+                var labelGo = new GameObject("Label", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+                labelGo.transform.SetParent(go.transform, false);
+                var label = labelGo.GetComponent<UnityEngine.UI.Text>();
+                label.font = IdePanel.UiFont;
+                label.fontSize = 11;
+                label.color = new Color(0.87f, 0.88f, 0.90f, 1f);
+                label.alignment = TextAnchor.MiddleLeft;
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.raycastTarget = false;
+                var lr = (RectTransform)labelGo.transform;
+                lr.anchorMin = Vector2.zero;
+                lr.anchorMax = Vector2.one;
+                lr.offsetMin = new Vector2(6f, 0f);
+                lr.offsetMax = new Vector2(-4f, 0f);
+
+                completeRows.Add(go);
+                completeTexts.Add(label);
+                completeImages.Add(image);
+            }
+            completeBox.gameObject.SetActive(false);
+        }
+
+        private void HighlightCompletion()
+        {
+            for (int i = 0; i < completeImages.Count; i++)
+            {
+                bool selected = i == completeIndex && i < completeOptions.Count;
+                completeImages[i].color = selected
+                    ? new Color(0.33f, 0.45f, 0.38f, 1f)
+                    : new Color(1f, 1f, 1f, 0.02f);
+            }
+        }
+
+        private void PositionCompletion()
+        {
+            if (completeBox == null || caretRect == null || root == null) return;
+            try
+            {
+                Vector3 world = caretRect.TransformPoint(new Vector3(0f, -4f, 0f));
+                Vector2 screen = RectTransformUtility.WorldToScreenPoint(null, world);
+                Vector2 local;
+                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screen, null, out local)) return;
+                Rect area = root.rect;
+                float x = local.x - area.xMin;
+                float y = local.y - area.yMin;
+                float width = completeBox.sizeDelta.x;
+                float height = completeBox.sizeDelta.y;
+                x = Mathf.Clamp(x, 2f, Mathf.Max(2f, area.width - width - 2f));
+                float below = y - height;
+                y = below >= 2f ? below : y + 20f;
+                y = Mathf.Clamp(y, 2f, Mathf.Max(2f, area.height - height - 2f));
+                completeBox.anchoredPosition = new Vector2(x, y);
+            }
+            catch { }
+        }
+
+        private void MoveCompletion(int delta)
+        {
+            if (completeOptions.Count == 0) return;
+            completeIndex = Mathf.Clamp(completeIndex + delta, 0, completeOptions.Count - 1);
+            HighlightCompletion();
+        }
+
+        private void PickCompletion(int index)
+        {
+            if (!completeOpen || index < 0 || index >= completeOptions.Count) return;
+            completeIndex = index;
+            CommitCompletion();
+        }
+
+        private void CommitCompletion()
+        {
+            if (!completeOpen || completeOptions.Count == 0) { CloseCompletion(); return; }
+            int index = Mathf.Clamp(completeIndex, 0, completeOptions.Count - 1);
+            int pos;
+            string text = Completion.Apply(Text, caret, completeOptions[index], out pos);
+            caret = TextEdit.Clamp(pos, text);
+            CloseCompletion();
+            SetText(text);
+        }
+
+        private void CloseCompletion()
+        {
+            completeOpen = false;
+            if (completeBox != null) completeBox.gameObject.SetActive(false);
+        }
+
+        private HashSet<string> Names()
+        {
+            string key = "";
+            try { key = IdePanel.SaveDir() + "|" + (bound != null ? bound.fileName : (rawPath ?? "")); }
+            catch { }
+            if (completeNames != null && key == completeNamesKey) return completeNames;
+
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < Keywords.Length; i++) set.Add(Keywords[i]);
+            try
+            {
+                string stub = Path.Combine(IdePanel.SaveDir(), "__builtins__.py");
+                if (File.Exists(stub)) Completion.AddNames(File.ReadAllText(stub), set);
+            }
+            catch { }
+            try
+            {
+                if (bound != null && bound.tokenizedIdentifiers != null)
+                    foreach (var identifier in bound.tokenizedIdentifiers) set.Add(identifier);
+            }
+            catch { }
+
+            completeNames = set;
+            completeNamesKey = key;
+            return set;
         }
 
         private static string IndentAt(string text, int pos)
@@ -562,7 +812,7 @@ namespace TFWRFolders
             string text = input.text ?? "";
             if (inputText.textInfo == null || inputText.textInfo.characterCount == 0)
             {
-                caretRect.anchoredPosition = new Vector2(0f, 0f);
+                caretRect.anchoredPosition = new Vector2(0f, Mathf.Max(0f, inputText.rectTransform.rect.height - 16f));
                 caretRect.sizeDelta = new Vector2(1.5f, 16f);
                 BlinkCaret();
                 return;
@@ -595,9 +845,18 @@ namespace TFWRFolders
                 lineHeight = info.lineInfo[ch.lineNumber].lineHeight;
             }
 
-            caretRect.anchoredPosition = position;
+            caretRect.anchoredPosition = CaretAnchor(position);
             caretRect.sizeDelta = new Vector2(1.5f, Mathf.Max(8f, lineHeight));
             BlinkCaret();
+        }
+
+        // Comment: TMP reports caret coords around the text centre; the caret rect is corner-anchored.
+        private Vector2 CaretAnchor(Vector2 local)
+        {
+            Rect rect = inputText.rectTransform.rect;
+            float x, y;
+            TextEdit.CaretAnchor(local.x, local.y, rect.width, rect.height, out x, out y);
+            return new Vector2(x, y);
         }
 
         private void BlinkCaret()

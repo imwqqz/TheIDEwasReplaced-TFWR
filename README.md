@@ -49,16 +49,23 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
   Backspace/Delete, arrows, Home/End, Enter with indent, Tab, Ctrl+V). There is no text selection
   or IME input. The wheel scrolls the code; the map zooms only when the pointer is outside the
   IDE window.
-- **Toolbar icons** (title bar, right): run/stop toggle, save, terminal toggle, new file, new
-  folder, collapse/expand all, delete, menu, hide.
-- **Project explorer** - collapsible, on the left by default (`Explorer side` config). Drag a
-  file row onto a folder to move it, onto the editor to open it, or onto an empty spot of the
-  tree to move it back to the root. Right-click any row for the same actions.
+- **Completion** - pops up as you type a word of two or more characters, or on **Ctrl+Space**.
+  Up/Down move, Enter/Tab or a click inserts, Esc closes. Names come from the save's
+  `__builtins__.py`, the identifiers already in the file and the language keywords.
+- **Project explorer** - collapsible, on the right by default (`Explorer side` config). Its header
+  holds the file icons: new file, new folder, collapse/expand all, delete and menu. A vertical
+  strip at the window's left edge holds run/stop, save, terminal and hide; it hides with the
+  explorer. Drag a file row onto a folder header, or onto any file inside that folder,
+  to move it; drop it on the editor to open it, or on an empty spot of the tree to move it back
+  to the root. Right-click any row for the same actions.
+- **New file** - created in the root unless a folder row is selected; select a folder and the
+  dialog is prefilled with it. A selected file counts as no folder.
 - **`.farmignore`** appears in the explorer when present (or create it from the menu). It opens
   in the editor as plain text and saves back to the file; the tree re-reads the rules.
 - **Terminal** - bottom panel with a `Terminal` header, live output and Clear; toggle from the
   toolbar or the panel chevron. Right-click it for Copy output and Clear.
-- The terminal shows the game's real `print` / `quick_print` / error output, including `In:` traces.
+- The terminal shows `quick_print` results from `output.txt` plus the game's log lines
+  (`print`, errors and `In:` traces). Clear empties both.
 - The IDE hides itself while the game's Escape menu is open and returns when you close the menu.
 
 ## Rules

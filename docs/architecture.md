@@ -82,19 +82,31 @@ file operation.
 
 - `IdePanel` is a floating screen-space window: title bar drag, bottom-right grip resize,
   position/size persisted under `[Window]` in `tfwr.folders.cfg`.
-- Regions (title, explorer, editor, terminal, status, separator) come from `IdeLayout.Compute(...)`,
-  a pure function with unit tests; the explorer side (`Right`/`Left`) is read on every `Layout()`,
-  so the config applies without a relaunch.
+- Regions (title, explorer, editor, terminal, status, separator, tool strip) come from
+  `IdeLayout.Compute(...)`, a pure function with unit tests; the explorer side (`Right`/`Left`) and
+  the strip width are inputs, so the config applies without a relaunch.
 - All surfaces are opaque: shades are derived by multiplying the theme frame colour.
 - **Explorer header icons**: new file, new folder, collapse/expand all, delete, menu; right-click
-  on a row opens the same actions as a context list.
-- **Drag and drop**: a file row can be dropped on a folder (move), on the editor (open) or on an
-  empty part of the tree (move to root). One `MoveFile` path is shared with the Move dialog and is
-  covered by the `TryMoveFile` unit test. The tree refresh is deferred while dragging so rows do
-  not disappear under the cursor.
+  on a row opens the same actions as a context list. Run/stop, save, terminal and hide live in a
+  24 px vertical strip at the window's left edge, hidden with the explorer.
+- **Drag and drop**: a file row can be dropped on a folder header or on any file row inside that
+  folder (move), on the editor (open) or on an empty part of the tree (move to root). Dropping on
+  `.farmignore` is refused. `DragTarget.FolderFor` maps the row under the pointer to the receiving
+  folder; one `MoveFile` path is shared with the Move dialog and is covered by the
+  `TryMoveFile` unit test. The tree refresh is deferred while dragging so rows do not disappear
+  under the cursor.
+- **New file** goes to the root unless a folder row is selected; the prompt is prefilled with the
+  selected folder. A selected file counts as no folder.
 - **Typing**: keys are read directly from `Input.inputString`, with keycodes for arrows, Delete,
-  Home/End and Ctrl+V; a custom caret is drawn from `TMP_Text` line info and kept in view. The
-  game's `InputBoss` is disabled while the editor is active. No EventSystem keyboard path is used.
+  Home/End, Ctrl+V and Ctrl+Space; a custom caret is drawn from `TMP_Text` line info and kept in
+  view. TMP reports caret coordinates around the text centre, so `TextEdit.CaretAnchor` adds the
+  rect pivot offset before placing the caret. The game's `InputBoss` is disabled while the editor
+  is active. No EventSystem keyboard path is used.
+- **Completion**: `Completion` (pure, unit tested) finds the word before the caret, ranks prefix
+  matches before contains matches and replaces the word. `CodeEditor` renders up to eight rows
+  under the caret; Up/Down/Enter/Tab/Esc and clicks are handled before normal typing. Names come
+  from the save's `__builtins__.py` (parsed lazily and cached per save/file), the bound window's
+  `tokenizedIdentifiers` and a keyword list.
 - **Editor sync**: while typing, an external watcher change is ignored with a warning instead of
   being overwritten; idle external changes are applied. `.farmignore` is reloaded on mtime change
   when it has no pending edit.
@@ -104,8 +116,11 @@ file operation.
 - **.farmignore editing**: the file is listed in the explorer and opened in a raw-text mode of
   `CodeEditor` (no hidden window, no parser). Writes happen after 600 ms, on file switch and on
   F10; the tree re-reads the rules afterwards.
-- **Terminal** shows `Logger.GetOutputString()` (reflection on `MainSim.logger`), polled every
-  0.4 s while visible; its header has no subtitle and right-click opens Copy output / Clear.
+- **Terminal** shows the tail of `output.txt` in the game's persistent data folder (where
+  `quick_print` writes) followed by `Logger.GetOutputString()` (reflection on `MainSim.logger`),
+  polled every 0.4 s while visible and reloaded only when the file timestamp changes. Clear calls
+  `Logger.Clear()` and truncates the file. Its header has no subtitle and right-click opens
+  Copy output / Clear.
 - While open, `EnforceSingleEditor` hides every code window **and docs window**
   (`SetActive(false)`, tracked in `touched`); windows created later are hidden on the next frame.
   The selected script is bound to the editor through its hidden window.

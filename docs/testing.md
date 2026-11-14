@@ -46,19 +46,23 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 | 10 | Create a root file with an existing leaf name (e.g. copy `test\helper.py` to root) | Next load: conflict popup, red status line, folder copy skipped; log lists it. |
 | 11 | Drag the IDE by its title bar, resize from the bottom-right corner | Window and editor area move/resize. Position/size survive a F10 close/reopen and a relaunch. |
 | 12 | Type in the editor, then Run | The edited text runs; status `Ln/Col` tracks the caret. |
-| 13 | Set `Explorer side = Left` in `tfwr.folders.cfg`, press F10 twice | Explorer moves to the left without a relaunch. |
+| 13 | Set `Explorer side = Left` in `tfwr.folders.cfg`, press F10 twice | Explorer moves to the left without a relaunch (default is Right). |
 | 14 | Add `docs/` to `Saves/foldertest/.farmignore` | The `docs` folder disappears from the tree; its scripts are not loaded; files stay on disk. |
 | 15 | Press Escape while the IDE is open, then close the menu | IDE hides while the menu is up (log line) and returns afterwards. |
 | 16 | Check that no game code window is visible while the IDE is open | All code/docs windows are hidden; closing the IDE (F10) restores them. |
 | 17 | Right-click a file row, then the terminal | File list shows New file, New folder, Rename, Move, Delete, Refresh; terminal list shows Copy output and Clear. |
-| 18 | Use the toolbar icons | Run/stop toggle, save, terminal, new file, new folder, collapse all, delete, menu, hide; no text buttons. |
+| 18 | Use the icons | Project header holds new file, new folder, collapse all, delete, menu; the strip at the window's far left holds run/stop, save, terminal, hide; no text buttons. |
 | 19 | Click in the code and type; roll the wheel over the editor | Caret appears, typing works, code scrolls, and the map does not zoom. |
-| 20 | Drag a file row onto a folder, onto the editor, then onto an empty tree spot | File moves on disk, editor opens it, file returns to root. Escape cancels. |
+| 20 | Drag `hay` onto the `test` header, then onto `helper` inside `test` | Both drops move the file: the header and any file row of the folder are targets. Saving writes it to that folder. |
 | 21 | Add `docs/` to `.farmignore` in the editor | Tree drops the folder after the save; the file is written on disk. |
 | 22 | Open `.farmignore`, then click the delete icon | The file is deleted after the confirm dialog. |
 | 23 | While typing, press F10 (close), then type in the game | The caret leaves the editor; camera keys work again. |
 | 24 | Scroll with the wheel outside the IDE window | The map zooms; scrolling over the IDE never zooms it. |
 | 25 | Drag inside the Project list | The list does not scroll; the wheel does. |
+| 26 | Select a folder row, click new file; then select a file, click new file | Prefilled with the folder first, empty (root) the second time; the file lands where the prompt said. |
+| 27 | Run a script that calls `quick_print`, open the Terminal | The printed text appears, matching `output.txt`; Clear empties the panel and the file. |
+| 28 | Type `quic` in the editor, then Ctrl+Space | A popup lists `quick_print`; Up/Down/Enter insert it, Esc closes. |
+| 29 | Click in the middle of a line, then type two characters | The caret sits under the click and moves with the typing, not at a screen edge. |
 | 17 | F10 to hide IDE | Normal canvas layout is intact; windows still open. |
 
 ## Log lines that prove success

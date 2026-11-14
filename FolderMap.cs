@@ -240,6 +240,25 @@ namespace TFWRFolders
             }
         }
 
+        // Comment: a root script blocks a move by name unless it is the target of the move itself.
+        public static bool HasRootLeaf(string saveDir, string leaf, string exceptRel)
+        {
+            if (string.IsNullOrEmpty(saveDir) || !Directory.Exists(saveDir)) return false;
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(saveDir, "*.py", SearchOption.TopDirectoryOnly))
+                {
+                    string name = Path.GetFileNameWithoutExtension(path);
+                    if (string.Equals(name, "__builtins__", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.Equals(name, leaf, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (string.Equals(name, exceptRel ?? "", StringComparison.OrdinalIgnoreCase)) continue;
+                    return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
         private static string BuildPath(string saveDir, string folder, string leaf)
         {
             folder = NormalizeFolder(folder);

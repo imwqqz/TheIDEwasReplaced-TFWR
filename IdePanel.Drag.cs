@@ -80,14 +80,29 @@ namespace TFWRFolders
             if (!dragActive) return;
             PositionGhost(screen);
 
-            RowInfo target = FindRowUnder(screen, 2f);
-            if (target != null && !target.isFolder) target = null;
+            RowInfo target = FolderRowFor(FindRowUnder(screen, 2f));
 
             if (hoverRow != null && hoverRow != target && hoverRow.image != null)
                 hoverRow.image.color = hoverRow.baseColor;
             hoverRow = target;
             if (hoverRow != null && hoverRow.image != null)
                 hoverRow.image.color = Color.Lerp(hoverRow.baseColor, accent, 0.45f);
+        }
+
+        // Comment: the folder that receives a drop, or null when the row refuses it.
+        private RowInfo FolderRowFor(RowInfo row)
+        {
+            if (row == null) return null;
+            string folder = DragTarget.FolderFor(row.folder, row.isFolder, row.leaf);
+            if (folder == null) return null;
+            if (row.isFolder) return row;
+            if (folder.Length == 0) return null;
+            foreach (var candidate in rowInfos)
+            {
+                if (candidate.isFolder && candidate.folder != null && string.Equals(candidate.folder, folder, StringComparison.OrdinalIgnoreCase))
+                    return candidate;
+            }
+            return null;
         }
 
         private void EndRowDrag(Vector2 screen)
@@ -98,10 +113,11 @@ namespace TFWRFolders
             string from = dragFolder;
 
             RowInfo target = FindRowUnder(screen, 6f);
+            string dropFolder = target == null ? null : DragTarget.FolderFor(target.folder, target.isFolder, target.leaf);
             bool overEditor = editorRect != null && RectTransformUtility.RectangleContainsScreenPoint(editorRect, screen, null);
             bool overTree = treePanel != null && RectTransformUtility.RectangleContainsScreenPoint(treePanel, screen, null);
 
-            DebugLog("[Folders] drag end " + leaf + " -> " + (overEditor ? "editor" : (target != null && target.isFolder ? "folder " + target.folder : (overTree && target == null ? "root" : "none"))));
+            DebugLog("[Folders] drag end " + leaf + " -> " + (overEditor ? "editor" : (dropFolder != null ? "folder '" + dropFolder + "'" : (overTree && target == null ? "root" : "none"))));
 
             CleanupDrag();
 
@@ -116,9 +132,9 @@ namespace TFWRFolders
                 return;
             }
 
-            if (target != null && target.isFolder)
+            if (dropFolder != null)
             {
-                MoveFile(leaf, from, target.folder);
+                MoveFile(leaf, from, dropFolder);
             }
             else if (overTree && target == null)
             {
