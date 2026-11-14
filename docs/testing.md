@@ -52,11 +52,13 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 | 16 | Check that no game code window is visible while the IDE is open | All code/docs windows are hidden; closing the IDE (F10) restores them. |
 | 17 | Right-click a file row, then the terminal | File list shows New file, New folder, Rename, Move, Delete, Refresh; terminal list shows Copy output and Clear. |
 | 18 | Use the toolbar icons | Run/stop toggle, save, terminal, new file, new folder, collapse all, delete, menu, hide; no text buttons. |
-| 19 | Click in the code and type; roll the wheel over the editor | Caret appears, typing works, code scrolls, and the map does not zoom or move. |
+| 19 | Click in the code and type; roll the wheel over the editor | Caret appears, typing works, code scrolls, and the map does not zoom. |
 | 20 | Drag a file row onto a folder, onto the editor, then onto an empty tree spot | File moves on disk, editor opens it, file returns to root. Escape cancels. |
 | 21 | Add `docs/` to `.farmignore` in the editor | Tree drops the folder after the save; the file is written on disk. |
 | 22 | Open `.farmignore`, then click the `×` icon | The file is deleted after the confirm dialog. |
 | 23 | While typing, press F10 (close), then type in the game | The caret leaves the editor; camera keys work again. |
+| 24 | Scroll with the wheel outside the IDE window | The map zooms; scrolling over the IDE never zooms it. |
+| 25 | Drag inside the Project list | The list does not scroll; the wheel does. |
 | 17 | F10 to hide IDE | Normal canvas layout is intact; windows still open. |
 
 ## Log lines that prove success

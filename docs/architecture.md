@@ -92,9 +92,12 @@ file operation.
   empty part of the tree (move to root). One `MoveFile` path is shared with the Move dialog and is
   covered by the `TryMoveFile` unit test. The tree refresh is deferred while dragging so rows do
   not disappear under the cursor.
-- **Typing isolation**: while the editor has focus the game's `InputBoss` is disabled (restored on
-  blur, close, menu). `Workspace.Scroll` returns false whenever the IDE is open, so the wheel only
-  scrolls the editor or panels, never the map.
+- **Typing**: keys are read directly from `Input.inputString`, with keycodes for arrows, Delete,
+  Home/End and Ctrl+V; a custom caret is drawn from `TMP_Text` line info. The game's `InputBoss`
+  is disabled while the editor is active. No EventSystem keyboard path is used.
+- **Scroll isolation**: `Workspace.Scroll` returns false only while the pointer is inside the IDE
+  window, so the map still zooms outside it. The editor scrolls with the wheel; the Project list
+  ignores drag-scrolling and uses the wheel only.
 - **.farmignore editing**: the file is listed in the explorer and opened in a raw-text mode of
   `CodeEditor` (no hidden window, no parser). Writes happen after 600 ms, on file switch and on
   F10; the tree re-reads the rules afterwards.

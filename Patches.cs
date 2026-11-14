@@ -302,7 +302,7 @@ namespace TFWRFolders
     {
         private static bool Prefix()
         {
-            return !IdePanel.IsOpen;
+            return !IdePanel.IsPointerOverWindow;
         }
     }
 }

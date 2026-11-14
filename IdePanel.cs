@@ -17,6 +17,16 @@ namespace TFWRFolders
             get { return instance != null && instance.canvas != null && instance.canvas.enabled; }
         }
 
+        internal static bool IsPointerOverWindow
+        {
+            get
+            {
+                return instance != null && instance.canvas != null && instance.canvas.enabled
+                    && instance.windowRect != null
+                    && RectTransformUtility.RectangleContainsScreenPoint(instance.windowRect, Input.mousePosition, null);
+            }
+        }
+
         private const float GripSize = 16f;
 
         private static IdePanel instance;
@@ -26,6 +36,7 @@ namespace TFWRFolders
 
         private Canvas canvas;
         private RectTransform windowRect;
+        private Image windowBg;
         private RectTransform titleBar;
         private Image titleBarBg;
         private Text titleText;
@@ -81,6 +92,10 @@ namespace TFWRFolders
         private bool suppressed;
         private bool wasVisibleBeforeMenu;
         private bool ignoreSelected;
+        private bool pressActive;
+        private string pressLeaf;
+        private string pressFolder;
+        private Vector2 pressPos;
         private bool dragActive;
         private string dragLeaf;
         private string dragFolder;
@@ -130,25 +145,16 @@ namespace TFWRFolders
             }
         }
 
-        private sealed class RowDrag : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+        private sealed class RowPress : MonoBehaviour, IPointerDownHandler
         {
             public IdePanel owner;
             public string leaf;
             public string folder;
 
-            public void OnBeginDrag(PointerEventData eventData)
+            public void OnPointerDown(PointerEventData eventData)
             {
-                if (owner != null) owner.BeginRowDrag(leaf, folder, eventData.position);
-            }
-
-            public void OnDrag(PointerEventData eventData)
-            {
-                if (owner != null) owner.UpdateRowDrag(eventData.position);
-            }
-
-            public void OnEndDrag(PointerEventData eventData)
-            {
-                if (owner != null) owner.EndRowDrag(eventData.position);
+                if (eventData.button == PointerEventData.InputButton.Left && owner != null)
+                    owner.BeginPress(leaf, folder, eventData.position);
             }
         }
 
@@ -161,6 +167,11 @@ namespace TFWRFolders
                 if (eventData.button == PointerEventData.InputButton.Right && onClick != null)
                     onClick(eventData.position);
             }
+        }
+
+        private sealed class NoDrag : MonoBehaviour, IBeginDragHandler
+        {
+            public void OnBeginDrag(PointerEventData eventData) { }
         }
 
         private sealed class RowInfo
@@ -244,7 +255,7 @@ namespace TFWRFolders
                         if (canvas.enabled) canvas.enabled = false;
                         CloseModal();
                         CloseMenu();
-                        CancelDrag();
+                        CancelPress();
                         if (editor != null) editor.Blur();
                         ReleaseInputBoss();
                         Plugin.Log?.LogInfo("[Folders] IDE hidden for the in-game menu");
@@ -271,17 +282,21 @@ namespace TFWRFolders
 
                 if (!canvas.enabled)
                 {
-                    if (editor != null && editor.HasFocus) editor.Blur();
+                    if (editor != null && editor.IsEditing) editor.Blur();
                     ReleaseInputBoss();
                     return;
                 }
 
-                if (dragActive && Input.GetKeyDown(KeyCode.Escape)) CancelDrag();
+                if (pressActive || dragActive) HandlePointer();
                 else if (contextMenu != null && Input.GetKeyDown(KeyCode.Escape)) CloseMenu();
+
+                if (editor != null && editor.IsEditing && Input.GetMouseButtonDown(0)
+                    && !RectTransformUtility.RectangleContainsScreenPoint(editorRect, Input.mousePosition, null))
+                    editor.CancelEditing();
 
                 if (!rectLoaded) ClampWindow();
 
-                UpdateInputBoss(editor != null && editor.HasFocus);
+                UpdateInputBoss(editor != null && editor.IsEditing);
                 HideAll();
                 if (editor != null) editor.Tick();
                 UpdateRunIcon();
@@ -303,7 +318,7 @@ namespace TFWRFolders
             }
             catch (Exception e)
             {
-                if (editor == null || !editor.HasFocus) ReleaseInputBoss();
+                if (editor == null || !editor.IsEditing) ReleaseInputBoss();
                 Plugin.Log?.LogError("[Folders] panel update: " + e);
             }
         }
@@ -332,7 +347,7 @@ namespace TFWRFolders
                     editor.Flush();
                     editor.Blur();
                 }
-                CancelDrag();
+                CancelPress();
                 CloseMenu();
                 ReleaseInputBoss();
                 RestoreAll();
@@ -539,6 +554,8 @@ namespace TFWRFolders
 
             windowRect = MakeRect(canvasGo.transform, "Window");
             SetRect(windowRect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), windowSize, windowPos);
+            windowBg = windowRect.gameObject.AddComponent<Image>();
+            windowBg.color = FallbackBg;
 
             titleBar = MakeRect(windowRect, "TitleBar");
             titleBarBg = titleBar.gameObject.AddComponent<Image>();
@@ -605,6 +622,7 @@ namespace TFWRFolders
             var treeViewport = MakeRect(treeScrollRect, "Viewport");
             SetRect(treeViewport, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
             treeViewport.gameObject.AddComponent<RectMask2D>();
+            treeViewport.gameObject.AddComponent<NoDrag>();
             var treeViewportImage = treeViewport.gameObject.AddComponent<Image>();
             treeViewportImage.color = new Color(0f, 0f, 0f, 0.01f);
 
@@ -893,6 +911,7 @@ namespace TFWRFolders
             btnCol.a = 1f;
 
             titleBarBg.color = titleCol;
+            windowBg.color = bg;
             treeBg.color = treeCol;
             consoleBg.color = consoleCol;
             statusBg.color = statusCol;
@@ -1073,10 +1092,10 @@ namespace TFWRFolders
 
             if (!isFolder && !string.IsNullOrEmpty(leaf))
             {
-                var drag = go.AddComponent<RowDrag>();
-                drag.owner = this;
-                drag.leaf = leaf;
-                drag.folder = folder ?? "";
+                var press = go.AddComponent<RowPress>();
+                press.owner = this;
+                press.leaf = leaf;
+                press.folder = folder ?? "";
             }
 
             rowInfos.Add(new RowInfo
@@ -1139,12 +1158,40 @@ namespace TFWRFolders
 
         // ---------------- drag and drop ----------------
 
-        private void BeginRowDrag(string leaf, string folder, Vector2 screen)
+        private void BeginPress(string leaf, string folder, Vector2 screen)
         {
-            if (string.IsNullOrEmpty(leaf) || dragActive) return;
+            if (string.IsNullOrEmpty(leaf) || suppressed) return;
+            pressActive = true;
+            pressLeaf = leaf;
+            pressFolder = folder ?? "";
+            pressPos = screen;
+            if (contextMenu != null) CloseMenu();
+            Plugin.Log?.LogInfo("[Folders] row press " + leaf);
+        }
+
+        private void HandlePointer()
+        {
+            Vector2 mouse = Input.mousePosition;
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CancelPress();
+                return;
+            }
+            if (Input.GetMouseButtonUp(0))
+            {
+                EndPress(mouse);
+                return;
+            }
+            if (!dragActive && (mouse - pressPos).sqrMagnitude > 100f) StartDrag(mouse);
+            if (dragActive) UpdateRowDrag(mouse);
+        }
+
+        private void StartDrag(Vector2 screen)
+        {
+            if (dragActive || string.IsNullOrEmpty(pressLeaf)) return;
             dragActive = true;
-            dragLeaf = leaf;
-            dragFolder = folder ?? "";
+            dragLeaf = pressLeaf;
+            dragFolder = pressFolder;
             CloseMenu();
 
             dragGhost = new GameObject("DragGhost", typeof(RectTransform), typeof(Image));
@@ -1152,13 +1199,27 @@ namespace TFWRFolders
             var rt = (RectTransform)dragGhost.transform;
             SetRect(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(150f, 20f), Vector2.zero);
             dragGhost.GetComponent<Image>().color = statusCol;
-            dragGhostText = MakeText(dragGhost.transform, leaf, 11, fg, TextAnchor.MiddleCenter, false);
+            dragGhostText = MakeText(dragGhost.transform, dragLeaf, 11, fg, TextAnchor.MiddleCenter, false);
             var tr = (RectTransform)dragGhostText.transform;
             tr.anchorMin = Vector2.zero;
             tr.anchorMax = Vector2.one;
             tr.offsetMin = new Vector2(4f, 0f);
             tr.offsetMax = new Vector2(-4f, 0f);
+            Plugin.Log?.LogInfo("[Folders] drag start " + dragLeaf);
             UpdateRowDrag(screen);
+        }
+
+        private void EndPress(Vector2 screen)
+        {
+            pressActive = false;
+            if (dragActive)
+            {
+                EndRowDrag(screen);
+            }
+            else
+            {
+                CleanupDrag();
+            }
         }
 
         private void UpdateRowDrag(Vector2 screen)
@@ -1179,12 +1240,15 @@ namespace TFWRFolders
         private void EndRowDrag(Vector2 screen)
         {
             if (!dragActive) return;
+            pressActive = false;
             string leaf = dragLeaf;
             string from = dragFolder;
 
             RowInfo target = FindRowUnder(screen);
             bool overEditor = editorRect != null && RectTransformUtility.RectangleContainsScreenPoint(editorRect, screen, null);
             bool overTree = treePanel != null && RectTransformUtility.RectangleContainsScreenPoint(treePanel, screen, null);
+
+            Plugin.Log?.LogInfo("[Folders] drag end " + leaf + " -> " + (overEditor ? "editor" : (target != null && target.isFolder ? "folder " + target.folder : (overTree && target == null ? "root" : "none"))));
 
             CleanupDrag();
 
@@ -1210,11 +1274,14 @@ namespace TFWRFolders
             Refresh();
         }
 
-        private void CancelDrag()
+        private void CancelPress()
         {
-            if (!dragActive) return;
-            CleanupDrag();
-            Refresh();
+            pressActive = false;
+            if (dragActive)
+            {
+                CleanupDrag();
+                Refresh();
+            }
         }
 
         private void CleanupDrag()

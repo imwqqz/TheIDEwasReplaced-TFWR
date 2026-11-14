@@ -45,9 +45,10 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
 - **F10** — open/close the IDE.
 - **Drag the title bar** to move the window; **drag the bottom-right corner** to resize.
   Position and size are saved in `tfwr.folders.cfg` and restored next launch.
-- **Editor** — our own editor with syntax colours; click to place the caret and type. The wheel
-  scrolls the code; while the IDE is open the map does not zoom or move under the pointer.
-  The game's code windows are never shown; they remain as run/save backends.
+- **Editor** — our own editor with syntax colours; click to place the caret and type (characters,
+  Backspace/Delete, arrows, Home/End, Enter with indent, Tab, Ctrl+V). There is no text selection
+  or IME input. The wheel scrolls the code; the map zooms only when the pointer is outside the
+  IDE window.
 - **Toolbar icons** (title bar, right): run/stop toggle, save, terminal toggle, new file (``+``),
   new folder (``⊞``), collapse/expand all (``⇕``), delete (``×``), menu (``⋮``), hide (``_``).
 - **Project explorer** — collapsible, on the right by default (`Explorer side` config). Drag a
@@ -201,10 +202,13 @@ to the save root for the vanilla layout.
   dialog and of the context menu.
 - The IDE hides while the Escape menu is open (and logs it) and comes back when the menu closes.
   An open context menu or drag closes with it.
-- While the editor has focus the game's input handler is disabled, so typing does not move the
+- While the editor is active the game's input handler is disabled, so typing does not move the
   camera or trigger shortcuts. Clicking outside the editor restores it.
-- While the IDE is open the map does not scroll or zoom; the wheel only scrolls the editor and the
-  panels.
+- The wheel over the IDE scrolls the code or the Project list; the map zooms only outside the
+  IDE window.
+- The Project list scrolls with the wheel only; dragging inside it does not scroll the list.
+- Editor keys are handled directly (no EventSystem keyboard path). Text selection and IME are not
+  supported yet.
 - Dragging files from Windows Explorer into the game is not possible without a native plugin. Put
   the file in the save folder; the tree picks it up within 1.5 s.
 - Editor scroll is mouse-wheel only; there is no scrollbar or line-number gutter (the status bar

@@ -20,21 +20,26 @@ namespace TFWRFolders
         private readonly TMP_InputField input;
         private readonly TMP_Text inputText;
         private readonly TMP_Text overlay;
+        private readonly Image caretImage;
+        private readonly RectTransform caretRect;
 
         private CodeWindow bound;
         private bool rawMode;
         private string rawPath;
-        private bool syncing;
         private float pushAt = -1f;
         private float nextPoll;
         private float nextFontTry;
         private float scroll;
         private string colored = "";
         private bool fontReady;
+        private bool editing;
+        private int caret;
+        private Color caretColor = Color.white;
+        private float nextKeyLog;
 
-        internal int Caret { get { return input != null ? input.stringPosition : 0; } }
+        internal int Caret { get { return caret; } }
         internal string Text { get { return input != null ? (input.text ?? "") : ""; } }
-        internal bool HasFocus { get { return input != null && input.isFocused; } }
+        internal bool IsEditing { get { return editing; } }
 
         internal CodeEditor(IdePanel owner, RectTransform parent)
         {
@@ -44,7 +49,7 @@ namespace TFWRFolders
             Stretch(root);
             background = root.gameObject.AddComponent<Image>();
             background.color = new Color(0.09f, 0.10f, 0.12f, 1f);
-            var focusClick = root.gameObject.AddComponent<FocusOnClick>();
+            var focusClick = root.gameObject.AddComponent<ClickFocus>();
             focusClick.editor = this;
 
             viewport = MakeRect(root, "Viewport");
@@ -71,17 +76,17 @@ namespace TFWRFolders
             input = inputGo.AddComponent<TMP_InputField>();
             input.lineType = TMP_InputField.LineType.MultiLineNewline;
             input.richText = false;
-            input.restoreOriginalTextOnEscape = false;
-            input.onFocusSelectAll = false;
             input.scrollSensitivity = 0f;
-            input.customCaretColor = true;
-            input.interactable = true;
-            input.readOnly = false;
+            input.transition = Selectable.Transition.None;
+            input.interactable = false;
 
             // Comment: Image gives the field something to click.
             var hit = inputGo.AddComponent<Image>();
             hit.color = new Color(0f, 0f, 0f, 0.01f);
             input.targetGraphic = hit;
+
+            var inputClick = inputGo.AddComponent<ClickFocus>();
+            inputClick.editor = this;
 
             // Comment: overlay sits under the input text so the caret stays visible.
             var overlayGo = new GameObject("Overlay", typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -103,19 +108,28 @@ namespace TFWRFolders
             Stretch((RectTransform)inputText.transform);
             input.textComponent = inputText;
 
+            var caretGo = new GameObject("Caret", typeof(RectTransform), typeof(Image));
+            caretGo.transform.SetParent(inputText.transform, false);
+            caretRect = (RectTransform)caretGo.transform;
+            caretRect.anchorMin = Vector2.zero;
+            caretRect.anchorMax = Vector2.zero;
+            caretRect.pivot = Vector2.zero;
+            caretRect.sizeDelta = new Vector2(1.5f, 16f);
+            caretImage = caretGo.GetComponent<Image>();
+            caretImage.raycastTarget = false;
+            caretImage.color = new Color(1f, 1f, 1f, 0f);
+
             input.pointSize = 13f;
             overlay.fontSize = 13f;
-
-            input.onValueChanged.AddListener(OnValueChanged);
         }
 
-        private sealed class FocusOnClick : MonoBehaviour, IPointerClickHandler
+        private sealed class ClickFocus : MonoBehaviour, IPointerClickHandler
         {
             public CodeEditor editor;
 
             public void OnPointerClick(PointerEventData eventData)
             {
-                if (editor != null) editor.Focus();
+                if (editor != null) editor.OnClick(eventData.position);
             }
         }
 
@@ -165,11 +179,8 @@ namespace TFWRFolders
             if (background != null) background.color = editorBg;
             if (overlay != null) overlay.color = text;
             if (inputText != null) inputText.color = new Color(1f, 1f, 1f, 0f);
-            if (input != null)
-            {
-                input.caretColor = text;
-                input.selectionColor = new Color(accent.r, accent.g, accent.b, 0.30f);
-            }
+            caretColor = text;
+            if (caretImage != null) caretImage.color = new Color(text.r, text.g, text.b, 0f);
         }
 
         internal void Bind(CodeWindow cw)
@@ -179,6 +190,8 @@ namespace TFWRFolders
             rawMode = false;
             rawPath = null;
             bound = cw;
+            editing = false;
+            caret = 0;
             Apply(cw != null ? cw.CodeInput.text : "");
             scroll = 0f;
         }
@@ -191,6 +204,8 @@ namespace TFWRFolders
             rawPath = path;
             bound = null;
             owner.ShowParseError("");
+            editing = false;
+            caret = 0;
             string text = "";
             try { if (File.Exists(path)) text = File.ReadAllText(path); } catch { }
             Apply(text);
@@ -202,6 +217,8 @@ namespace TFWRFolders
             bound = null;
             rawMode = false;
             rawPath = null;
+            editing = false;
+            caret = 0;
             Apply("");
             owner.ShowParseError("");
         }
@@ -209,20 +226,36 @@ namespace TFWRFolders
         internal void Focus()
         {
             if (input == null) return;
-            input.interactable = true;
-            input.readOnly = false;
-            var es = EventSystem.current;
-            if (es != null) es.SetSelectedGameObject(input.gameObject);
-            input.ActivateInputField();
+            editing = true;
+            caret = TextEdit.Clamp(caret, Text);
+            if (caret == 0 && Text.Length > 0) caret = Text.Length;
+            DrawCaret();
+            Plugin.Log?.LogInfo("[Folders] editor click caret=" + caret);
+        }
+
+        internal void CancelEditing()
+        {
+            editing = false;
+            if (caretImage != null) caretImage.color = new Color(caretColor.r, caretColor.g, caretColor.b, 0f);
         }
 
         internal void Blur()
         {
-            if (input == null) return;
-            input.DeactivateInputField();
-            var es = EventSystem.current;
-            if (es != null && es.currentSelectedGameObject == input.gameObject)
-                es.SetSelectedGameObject(null);
+            CancelEditing();
+        }
+
+        private void OnClick(Vector2 screen)
+        {
+            if (inputText == null) return;
+            editing = true;
+            string text = Text;
+            int index = -1;
+            try { index = TMP_TextUtilities.FindIntersectingCharacter(inputText, screen, null, true); }
+            catch { }
+            if (index < 0) caret = text.Length;
+            else caret = TextEdit.Clamp(inputText.textInfo.characterInfo[index].index, text);
+            DrawCaret();
+            Plugin.Log?.LogInfo("[Folders] editor click caret=" + caret);
         }
 
         internal void Flush()
@@ -239,17 +272,17 @@ namespace TFWRFolders
 
         private void Apply(string text)
         {
-            syncing = true;
             input.text = text ?? "";
-            syncing = false;
             Colorize(text ?? "");
+            DrawCaret();
         }
 
-        private void OnValueChanged(string value)
+        private void SetText(string text)
         {
-            if (syncing) return;
-            Colorize(value ?? "");
+            input.text = text ?? "";
+            Colorize(text ?? "");
             pushAt = Time.unscaledTime + (rawMode ? 0.6f : 0.25f);
+            DrawCaret();
         }
 
         private void Colorize(string text)
@@ -355,6 +388,7 @@ namespace TFWRFolders
         {
             if (input == null) return;
             if (!fontReady) EnsureFont();
+            if (editing) HandleKeys();
 
             if (pushAt > 0f && Time.unscaledTime >= pushAt) Push();
 
@@ -362,14 +396,152 @@ namespace TFWRFolders
             {
                 nextPoll = Time.unscaledTime + 0.4f;
                 string windowText = bound.CodeInput.text ?? "";
-                if (!input.isFocused && windowText != (input.text ?? "")) Apply(windowText);
+                if (!editing && windowText != (input.text ?? "")) Apply(windowText);
             }
 
             if (inputText != null && inputText.color.a != 0f)
                 inputText.color = new Color(1f, 1f, 1f, 0f);
 
+            SyncOverlay();
             UpdateHeight();
+            DrawCaret();
             HandleWheel();
+        }
+
+        private void HandleKeys()
+        {
+            string text = input.text ?? "";
+            int pos = TextEdit.Clamp(caret, text);
+            bool changed = false;
+
+            string typed = Input.inputString ?? "";
+            for (int i = 0; i < typed.Length; i++)
+            {
+                char c = typed[i];
+                if (c == '\b')
+                {
+                    text = TextEdit.Backspace(text, ref pos);
+                    changed = true;
+                }
+                else if (c == '\n' || c == '\r')
+                {
+                    string indent = IndentAt(text, pos);
+                    text = TextEdit.Insert(text, pos, "\n" + indent, out pos);
+                    changed = true;
+                }
+                else if (c == '\t')
+                {
+                    text = TextEdit.Insert(text, pos, "    ", out pos);
+                    changed = true;
+                }
+                else if (c >= 32 && c != 127)
+                {
+                    text = TextEdit.Insert(text, pos, c.ToString(), out pos);
+                    changed = true;
+                }
+            }
+
+            if (Input.GetKeyDown(KeyCode.Delete))
+            {
+                text = TextEdit.Delete(text, ref pos);
+                changed = true;
+            }
+            if (Input.GetKeyDown(KeyCode.LeftArrow)) pos = Mathf.Max(0, pos - 1);
+            if (Input.GetKeyDown(KeyCode.RightArrow)) pos = Mathf.Min(text.Length, pos + 1);
+            if (Input.GetKeyDown(KeyCode.Home)) pos = TextEdit.LineStart(text, pos);
+            if (Input.GetKeyDown(KeyCode.End)) pos = TextEdit.LineEnd(text, pos);
+            if (Input.GetKeyDown(KeyCode.UpArrow)) pos = TextEdit.MoveLine(text, pos, -1);
+            if (Input.GetKeyDown(KeyCode.DownArrow)) pos = TextEdit.MoveLine(text, pos, 1);
+
+            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (ctrl && Input.GetKeyDown(KeyCode.V))
+            {
+                string clip = GUIUtility.systemCopyBuffer;
+                if (!string.IsNullOrEmpty(clip))
+                {
+                    clip = clip.Replace("\r", "");
+                    text = TextEdit.Insert(text, pos, clip, out pos);
+                    changed = true;
+                }
+            }
+
+            caret = TextEdit.Clamp(pos, text);
+            if (changed) SetText(text);
+            else if (Time.unscaledTime >= nextKeyLog) nextKeyLog = Time.unscaledTime + 0.3f;
+        }
+
+        private static string IndentAt(string text, int pos)
+        {
+            int start = TextEdit.LineStart(text, pos);
+            int i = start;
+            while (i < text.Length && (text[i] == ' ' || text[i] == '\t')) i++;
+            if (i <= pos) return text.Substring(start, i - start);
+            return text.Substring(start, Mathf.Max(0, pos - start));
+        }
+
+        private void DrawCaret()
+        {
+            if (caretImage == null || inputText == null) return;
+            if (!editing)
+            {
+                caretImage.color = new Color(caretColor.r, caretColor.g, caretColor.b, 0f);
+                return;
+            }
+
+            string text = input.text ?? "";
+            if (inputText.textInfo == null || inputText.textInfo.characterCount == 0)
+            {
+                caretRect.anchoredPosition = new Vector2(0f, 0f);
+                caretRect.sizeDelta = new Vector2(1.5f, 16f);
+                BlinkCaret();
+                return;
+            }
+
+            int target = TextEdit.Clamp(caret, text);
+            var info = inputText.textInfo;
+            int ci = -1;
+            for (int i = 0; i < info.characterCount; i++)
+            {
+                if (info.characterInfo[i].index >= target)
+                {
+                    ci = i;
+                    break;
+                }
+            }
+
+            Vector2 position;
+            float lineHeight;
+            if (ci < 0)
+            {
+                var last = info.characterInfo[info.characterCount - 1];
+                position = last.bottomRight;
+                lineHeight = info.lineInfo[last.lineNumber].lineHeight;
+            }
+            else
+            {
+                var ch = info.characterInfo[ci];
+                position = ch.index == target ? ch.bottomLeft : ch.bottomRight;
+                lineHeight = info.lineInfo[ch.lineNumber].lineHeight;
+            }
+
+            caretRect.anchoredPosition = position;
+            caretRect.sizeDelta = new Vector2(1.5f, Mathf.Max(8f, lineHeight));
+            BlinkCaret();
+        }
+
+        private void BlinkCaret()
+        {
+            float alpha = (Mathf.Repeat(Time.unscaledTime, 1f) < 0.55f) ? 1f : 0f;
+            caretImage.color = new Color(caretColor.r, caretColor.g, caretColor.b, alpha);
+        }
+
+        private void SyncOverlay()
+        {
+            if (inputText == null || overlay == null) return;
+            var src = (RectTransform)inputText.transform;
+            var dst = (RectTransform)overlay.transform;
+            if (dst.anchoredPosition != src.anchoredPosition) dst.anchoredPosition = src.anchoredPosition;
+            if (dst.rect.size != src.rect.size) dst.sizeDelta = src.rect.size;
         }
 
         private void UpdateHeight()
@@ -385,8 +557,8 @@ namespace TFWRFolders
             if (Mathf.Abs(content.sizeDelta.y - height) > 0.5f)
             {
                 content.sizeDelta = new Vector2(0f, height);
-                ClampScroll();
             }
+            ClampScroll();
         }
 
         private void HandleWheel()
@@ -406,7 +578,7 @@ namespace TFWRFolders
         {
             float max = Mathf.Max(0f, content.rect.height - viewport.rect.height);
             scroll = Mathf.Clamp(scroll, 0f, max);
-            content.anchoredPosition = new Vector2(0f, -scroll);
+            content.anchoredPosition = new Vector2(0f, scroll);
         }
 
         private static RectTransform MakeRect(Transform parent, string name)
