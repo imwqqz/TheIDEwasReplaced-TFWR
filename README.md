@@ -45,16 +45,18 @@ First-run verification steps: [docs/testing.md](docs/testing.md).
 - **F10** — open/close the IDE.
 - **Drag the title bar** to move the window; **drag the bottom-right corner** to resize.
   Position and size are saved in `tfwr.folders.cfg` and restored next launch.
-- **Editor** — our own editor with syntax colours; pick scripts in the Project explorer.
-  Run/Stop and Save act on the selected script. The game's code windows are never shown while
-  the IDE is open; they remain only as run/save backends.
-- **Project explorer** — collapsible, on the right by default (`Explorer side` config). Header
-  icons: `+` new file, `⊞` new folder, `⇕` collapse/expand all, `×` delete, `⋮` menu. Right-click
-  any row for New file, New folder, Rename, Move, Delete and Refresh.
-- **Terminal** — bottom panel with a `Terminal` header, live output and Clear; toggle with the
-  top-bar **Terminal** button or the panel chevron. Right-click it for Copy output and Clear.
-- **Run / Stop** — runs or stops the selected script (same as the window's run button).
-- **Save** — full game save (progress + scripts).
+- **Editor** — our own editor with syntax colours; click to place the caret and type. The wheel
+  scrolls the code; while the IDE is open the map does not zoom or move under the pointer.
+  The game's code windows are never shown; they remain as run/save backends.
+- **Toolbar icons** (title bar, right): run/stop toggle, save, terminal toggle, new file (``+``),
+  new folder (``⊞``), collapse/expand all (``⇕``), delete (``×``), menu (``⋮``), hide (``_``).
+- **Project explorer** — collapsible, on the right by default (`Explorer side` config). Drag a
+  file row onto a folder to move it, onto the editor to open it, or onto an empty spot of the
+  tree to move it back to the root. Right-click any row for the same actions.
+- **`.farmignore`** appears in the explorer when present (or create it from the menu). It opens
+  in the editor as plain text and saves back to the file; the tree re-reads the rules.
+- **Terminal** — bottom panel with a `Terminal` header, live output and Clear; toggle from the
+  toolbar or the panel chevron. Right-click it for Copy output and Clear.
 - The terminal shows the game's real `print` / `quick_print` / error output, including `In:` traces.
 - The IDE hides itself while the game's Escape menu is open and returns when you close the menu.
 
@@ -198,10 +200,18 @@ to the save root for the vanilla layout.
 - All IDE surfaces are opaque; the only translucent part is the dimmed backdrop of a rename/delete
   dialog and of the context menu.
 - The IDE hides while the Escape menu is open (and logs it) and comes back when the menu closes.
-  An open context menu closes with it.
+  An open context menu or drag closes with it.
+- While the editor has focus the game's input handler is disabled, so typing does not move the
+  camera or trigger shortcuts. Clicking outside the editor restores it.
+- While the IDE is open the map does not scroll or zoom; the wheel only scrolls the editor and the
+  panels.
+- Dragging files from Windows Explorer into the game is not possible without a native plugin. Put
+  the file in the save folder; the tree picks it up within 1.5 s.
 - Editor scroll is mouse-wheel only; there is no scrollbar or line-number gutter (the status bar
   shows `Ln/Col`).
 - The IDE chrome uses Unity's built-in UI font; the editor uses the game's code font (FiraCode)
   when it can be read from the CodeWindow prefab. Icon glyphs come from the same built-in font.
+- `.farmignore` edits are written after a 600 ms pause and on F10, so closing the IDE right after
+  typing does not lose them.
 - Saving while the IDE is open stores the hidden windows as usual; no window positions are
   changed by the IDE.
